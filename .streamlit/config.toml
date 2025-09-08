@@ -1,0 +1,7 @@
+[theme]
+base="light"
+primaryColor="#6D28D9"         # royal purple
+backgroundColor="#ffffff"       # white
+secondaryBackgroundColor="#f6f7fb"
+textColor="#0f172a"             # slate-900
+font="sans serif"

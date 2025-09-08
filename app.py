@@ -6,161 +6,252 @@ from datetime import datetime, timedelta
 from pytrends.exceptions import TooManyRequestsError
 
 from trends import get_client, interest_over_time, monthly_region_frames, related_queries
-from viz import line_with_spikes, animated_choropleth, wordcloud_from_related
+from viz import line_with_spikes, animated_choropleth, wordcloud_from_related, kpi_card, sparkline
 
-st.set_page_config(page_title="Google Trends – Interactive Dashboard", layout="wide")
-st.title("📈 Google Trends – Interactive Dashboard")
-st.caption("Fresh overview (instant) • Live sections on-demand • Annotated lines • Animated map • Word cloud")
+# ---------- Page + styles ----------
+st.set_page_config(page_title="Trends Studio", layout="wide")
 
-# ------------------ Demo sample (instant) ------------------
-def demo_sample(keywords=("AI", "ChatGPT"), days=90):
-    end = datetime.utcnow().date()
-    start = end - timedelta(days=days)
+st.markdown("""
+<style>
+/* Light gradient hero */
+.hero {
+  background: radial-gradient(1200px 400px at 20% -10%, rgba(109,40,217,0.10), transparent),
+              linear-gradient(90deg, rgba(109,40,217,0.10), rgba(37,99,235,0.08));
+  border-radius: 18px; padding: 18px 22px; margin-bottom: 14px;
+  border: 1px solid #e9eaf0;
+}
+.hero h1 { margin: 0; font-size: 1.9rem; line-height: 1.25; }
+.subtle { color: #475569; font-size: 0.95rem; margin-top: 4px; }
+
+/* Cards */
+.card {
+  background: #ffffff;
+  border: 1px solid #e9eaf0;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 6px 20px rgba(17, 24, 39, 0.06);
+}
+.card h3 { margin-top: 0; }
+
+/* KPI pills */
+.kpi {
+  display:flex; flex-direction:column; gap:6px; padding:12px 14px; border-radius:12px;
+  background: linear-gradient(180deg, #ffffff, #fafbff);
+  border:1px solid #e9eaf0;
+  box-shadow: 0 4px 16px rgba(17,24,39,0.05);
+}
+.kpi-label { color:#64748b; font-size:0.75rem; letter-spacing:.03em; text-transform:uppercase;}
+.kpi-value { font-size:1.25rem; font-weight:800; color:#111827;}
+.kpi-delta { margin-left:8px; font-size:.85rem; color:#16a34a; }
+
+/* Chips */
+.chip { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.75rem;
+  background: #eef2ff; border:1px solid #c7d2fe; color:#3730a3; }
+.chip.warn { background:#fef3c7; border-color:#fde68a; color:#92400e; }
+
+/* Section titles */
+.section-title { font-size:1.05rem; color:#0f172a; margin-bottom:8px; font-weight:700; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown(
+    '<div class="hero"><h1>✨ Trends Studio</h1>'
+    '<div class="subtle">Instant overview • Live on demand • Annotated lines • Animated map • Word cloud</div></div>',
+    unsafe_allow_html=True
+)
+
+
+# ---------- Sidebar controls ----------
+with st.sidebar:
+    st.subheader("Controls")
+    kw_text = st.text_input("Keywords", "AI, ChatGPT")
+    timeframe = st.selectbox("Timeframe", ["today 12-m","today 3-m","now 7-d","today 5-y"])
+    geo = st.text_input("Region (ISO-2, blank = worldwide)", "")
+    months = st.slider("Animated Map months", 3, 12, 6)
+    st.markdown("---")
+    preview_only = st.checkbox("Preview mode (no live calls)", value=True,
+                               help="Keeps everything snappy; fetch live data only when you click a button.")
+
+def parse_keywords(s: str): 
+    return [x.strip() for x in s.split(",") if x.strip()][:5]
+
+keywords = parse_keywords(kw_text) or ["AI"]
+
+# ---------- Demo data for instant render ----------
+def demo_ts(keywords=("AI","ChatGPT"), days=120):
+    end = datetime.utcnow().date(); start = end - timedelta(days=days)
     rng = pd.date_range(start, end, freq="D")
     df = pd.DataFrame({"date": rng})
     for i, kw in enumerate(keywords):
-        base = 40 + i * 5
-        s = (base
-             + 20 * np.sin(np.linspace(0, 6, len(rng)))
-             + np.random.RandomState(42+i).randn(len(rng)) * 4)
-        # clip to 0..100 and add spikes
-        s[int(len(rng)//3)] += 35
-        s[int(len(rng)//2)] += 25
-        df[kw] = np.clip(s, 0, 100).round(0).astype(int)
+        base = 45 + i*4
+        s = base + 18*np.sin(np.linspace(0, 6, len(rng))) + np.random.RandomState(33+i).randn(len(rng))*3
+        s[int(len(rng)*0.30)] += 28; s[int(len(rng)*0.55)] += 18
+        df[kw] = np.clip(s, 0, 100).round().astype(int)
     return df
 
-def demo_map_frames(keyword="AI"):
-    # two simple frames with a few countries
-    return pd.DataFrame(
-        [
-            # frame 1
-            {"region": "Australia", "value": 70, "iso2": "AU", "date_frame": "Frame 1"},
-            {"region": "United States", "value": 55, "iso2": "US", "date_frame": "Frame 1"},
-            {"region": "India", "value": 60, "iso2": "IN", "date_frame": "Frame 1"},
-            {"region": "United Kingdom", "value": 50, "iso2": "GB", "date_frame": "Frame 1"},
-            # frame 2
-            {"region": "Australia", "value": 50, "iso2": "AU", "date_frame": "Frame 2"},
-            {"region": "United States", "value": 65, "iso2": "US", "date_frame": "Frame 2"},
-            {"region": "India", "value": 75, "iso2": "IN", "date_frame": "Frame 2"},
-            {"region": "United Kingdom", "value": 40, "iso2": "GB", "date_frame": "Frame 2"},
-        ]
-    )
+def demo_frames(keyword="AI"):
+    return pd.DataFrame([
+        {"region":"Australia","value":70,"iso2":"AU","date_frame":"T1"},
+        {"region":"United States","value":58,"iso2":"US","date_frame":"T1"},
+        {"region":"India","value":62,"iso2":"IN","date_frame":"T1"},
+        {"region":"United Kingdom","value":50,"iso2":"GB","date_frame":"T1"},
+        {"region":"Australia","value":48,"iso2":"AU","date_frame":"T2"},
+        {"region":"United States","value":69,"iso2":"US","date_frame":"T2"},
+        {"region":"India","value":75,"iso2":"IN","date_frame":"T2"},
+        {"region":"United Kingdom","value":41,"iso2":"GB","date_frame":"T2"},
+    ])
 
 def demo_related():
-    top = pd.DataFrame({"query": ["what is ai", "chatgpt login", "ai tools"], "value": [80, 65, 50]})
-    rising = pd.DataFrame({"query": ["ai agents", "gpt-4o", "prompt engineering"], "value": [120, 100, 95]})
+    top = pd.DataFrame({"query":["what is ai","chatgpt login","ai tools"],"value":[80,65,50]})
+    rising = pd.DataFrame({"query":["ai agents","gpt-4o","prompt ideas"],"value":[120,100,95]})
     return {"top": top, "rising": rising}
 
-# ------------------ Cache live calls ------------------
+# ---------- Caches for live ----------
 @st.cache_data(ttl=900, show_spinner=False)
-def cached_interest_over_time(keywords, timeframe, geo):
+def live_ts(keywords, timeframe, geo):
     pytrends = get_client()
     return interest_over_time(pytrends, keywords, timeframe=timeframe, geo=geo)
 
 @st.cache_data(ttl=900, show_spinner=False)
-def cached_monthly_frames(keyword, months):
+def live_frames(keyword, months):
     pytrends = get_client()
     return monthly_region_frames(pytrends, keyword=keyword, months=months, geo="")
 
 @st.cache_data(ttl=900, show_spinner=False)
-def cached_related_queries(keyword, timeframe, geo):
+def live_related(keyword, timeframe, geo):
     pytrends = get_client()
     pytrends.build_payload([keyword], timeframe=timeframe, geo=geo)
     return related_queries(pytrends, keyword)
 
-# ------------------ Controls ------------------
-with st.sidebar:
-    st.header("Controls")
-    keywords_text = st.text_input("Keywords (comma-separated, up to 5)", value="AI, ChatGPT")
-    timeframe = st.selectbox("Timeframe", ["today 12-m", "today 3-m", "now 7-d", "today 5-y"])
-    geo = st.text_input("Region (ISO-2 or blank for worldwide)", value="")
-    months = st.slider("Animated Map: Months of history (live)", 3, 12, 6, 1)
+# Keep last good live results in session
+ss = st.session_state
+ss.setdefault("ts_last", None)
+ss.setdefault("frames_last", None)
+ss.setdefault("rq_last", None)
 
-    st.markdown("---")
-    preview_only = st.checkbox("Preview mode (no live calls)", value=True)
-    st.caption("Preview mode shows an instant overview without hitting Google. Uncheck to fetch live data, section by section.")
+# ---------- Overview row (KPIs + sparklines) ----------
+ov = st.container()
+with ov:
+    colK, colS = st.columns([1, 3])
+    with colK:
+        demo = demo_ts(tuple(keywords[:2]))
+        last_vals = [int(demo[k].iloc[-1]) for k in demo.columns if k!="date"]
+        avg_vals  = [int(demo[k].rolling(7, min_periods=1).mean().iloc[-1]) for k in demo.columns if k!="date"]
+        st.markdown(kpi_card("Now (demo)", f"{last_vals[0]}"), unsafe_allow_html=True)
+        st.markdown(kpi_card("7-day avg", f"{avg_vals[0]}"), unsafe_allow_html=True)
+        if ss["ts_last"] is not None:
+            st.markdown("<span class='chip'>Live data loaded</span>", unsafe_allow_html=True)
+        else:
+            st.markdown("<span class='chip warn'>Using demo until you fetch live</span>", unsafe_allow_html=True)
+    with colS:
+        st.markdown("<div class='section-title'>Interest Over Time (Annotated Spikes)</div>", unsafe_allow_html=True)
+        st.plotly_chart(
+            line_with_spikes(demo, [c for c in demo.columns if c!='date']),
+            use_container_width=True, key="overview_demo"
+        )
 
-def parse_keywords(s: str):
-    return [x.strip() for x in s.split(",") if x.strip()][:5]
+# ---------- Tabs ----------
+tab1, tab2, tab3 = st.tabs(["📈 Trends", "🗺️ Map", "🔤 Related"])
 
-keywords = parse_keywords(keywords_text)
-if not keywords:
-    st.warning("Please enter at least one keyword.")
-    st.stop()
-
-# ------------------ Section 1: Time series ------------------
-st.subheader("1) Interest Over Time (Annotated)")
-colA, colB = st.columns([1, 1])
-
-with colA:
-    st.write("**Fresh Overview (instant)**")
-    df_demo = demo_sample(tuple(keywords[:2]))  # small instant sample
-    st.plotly_chart(line_with_spikes(df_demo, df_demo.columns[1:].tolist()), use_container_width=True)
-
-with colB:
-    st.write("**Live (on-demand)**")
-    if preview_only:
-        st.info("Live fetch is disabled (Preview mode). Uncheck the box in sidebar to fetch live data.")
-    else:
-        if st.button("Fetch live time series"):
-            try:
-                df_ts = cached_interest_over_time(keywords, timeframe, geo)
-                if df_ts.empty:
-                    st.info("No live data returned. Try different timeframe/region/keywords.")
-                else:
-                    st.plotly_chart(line_with_spikes(df_ts, keywords), use_container_width=True)
-                    st.download_button("Download live CSV", df_ts.to_csv(index=False), "interest_over_time.csv")
-            except TooManyRequestsError:
-                st.error("Google is rate-limiting. Please wait 1–2 minutes and try again.")
-
-# ------------------ Section 2: Animated map ------------------
-st.subheader("2) Animated Map – Interest by Country")
-with st.expander("Show map"):
-    col1, col2 = st.columns([1,1])
-
-    with col1:
-        st.write("**Fresh Overview (instant)**")
-        frames_demo = demo_map_frames(keyword=keywords[0])
-        st.plotly_chart(animated_choropleth(frames_demo, title=f"Animated Interest – {keywords[0]} (demo)"),
-                        use_container_width=True)
-
-    with col2:
+# -- Tab 1: Trends ---------------------------------------------------------
+with tab1:
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.write("**Live (on-demand)**")
         if preview_only:
-            st.info("Live fetch is disabled (Preview mode). Uncheck to enable.")
+            st.info("Preview mode is on. Uncheck in the sidebar to enable live fetch.")
         else:
-            if st.button("Fetch live map"):
-                try:
-                    frames_df = cached_monthly_frames(keywords[0], months)
-                    if frames_df.empty:
-                        st.info("No regional data for this keyword/months.")
-                    else:
-                        st.plotly_chart(animated_choropleth(frames_df, title=f"Animated Interest – {keywords[0]}"),
-                                        use_container_width=True)
-                        st.download_button("Download map frames CSV", frames_df.to_csv(index=False), "map_frames.csv")
-                except TooManyRequestsError:
-                    st.warning("Map skipped due to rate limits. Try again later.")
+            if st.button("Fetch live time series", use_container_width=True, key="btn_ts"):
+                with st.spinner("Pulling latest from Google Trends…"):
+                    try:
+                        df = live_ts(keywords, timeframe, geo)
+                        if not df.empty:
+                            ss["ts_last"] = df
+                            st.toast("Live time series updated", icon="✅")
+                        else:
+                            st.toast("No live data for those settings. Showing demo.", icon="ℹ️")
+                    except TooManyRequestsError:
+                        if ss["ts_last"] is not None:
+                            st.toast("Rate limited – showing last live data", icon="⚠️")
+                        else:
+                            st.toast("Rate limited – showing demo", icon="⚠️")
+                st.rerun()
 
-# ------------------ Section 3: Word cloud ------------------
-st.subheader("3) Word Cloud – Related Queries")
-with st.expander("Show word cloud"):
-    col3, col4 = st.columns([1,1])
+        df_show = ss["ts_last"] if ss["ts_last"] is not None else demo
+        lbl = "Live" if ss["ts_last"] is not None else "Demo"
+        st.caption(f"Showing: {lbl}")
+        st.plotly_chart(
+            line_with_spikes(df_show, keywords[: len([c for c in df_show.columns if c!='date'])]),
+            use_container_width=True, key="trends_live"
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    with col3:
-        st.write("**Fresh Overview (instant)**")
-        demo_rq = demo_related()
-        img_buf = wordcloud_from_related(demo_rq["top"], demo_rq["rising"])
-        st.image(img_buf, caption=f"Related Queries (demo) – {keywords[0]}", use_column_width=True)
+    with c2:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.write("**Sparklines**")
+        base_df = ss["ts_last"] if ss["ts_last"] is not None else demo
+        for k in [c for c in base_df.columns if c != "date"]:
+            st.caption(k)
+            st.plotly_chart(sparkline(base_df, k), use_container_width=True, theme=None, key=f"spark_{k}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    with col4:
+# -- Tab 2: Map ------------------------------------------------------------
+with tab2:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    colL, colR = st.columns([3,1])
+    with colR:
         st.write("**Live (on-demand)**")
         if preview_only:
-            st.info("Live fetch is disabled (Preview mode). Uncheck to enable.")
+            st.info("Preview mode is on. Uncheck in the sidebar to enable live fetch.")
         else:
-            if st.button("Fetch live related queries"):
-                try:
-                    rq = cached_related_queries(keywords[0], timeframe, geo)
-                    img_live = wordcloud_from_related(rq.get("top"), rq.get("rising"))
-                    st.image(img_live, caption=f"Related Queries (live) – {keywords[0]}", use_column_width=True)
-                except TooManyRequestsError:
-                    st.info("Related queries were rate-limited. Try again later.")
+            if st.button("Fetch live map", use_container_width=True, key="btn_map"):
+                with st.spinner("Building monthly frames…"):
+                    try:
+                        frames = live_frames(keywords[0], months)
+                        if not frames.empty:
+                            ss["frames_last"] = frames
+                            st.toast("Live map updated", icon="✅")
+                        else:
+                            st.toast("No regional data. Showing demo.", icon="ℹ️")
+                    except TooManyRequestsError:
+                        if ss["frames_last"] is not None:
+                            st.toast("Rate limited – showing last live map", icon="⚠️")
+                        else:
+                            st.toast("Rate limited – showing demo map", icon="⚠️")
+                st.rerun()
+    with colL:
+        frames_show = ss["frames_last"] if ss["frames_last"] is not None else demo_frames(keywords[0])
+        st.caption("Animated regional interest")
+        st.plotly_chart(animated_choropleth(frames_show), use_container_width=True, key="map")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# -- Tab 3: Related --------------------------------------------------------
+with tab3:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    colL, colR = st.columns([3,1])
+    with colR:
+        st.write("**Live (on-demand)**")
+        if preview_only:
+            st.info("Preview mode is on. Uncheck in the sidebar to enable live fetch.")
+        else:
+            if st.button("Fetch live related", use_container_width=True, key="btn_related"):
+                with st.spinner("Fetching related queries…"):
+                    try:
+                        rq = live_related(keywords[0], timeframe, geo)
+                        if rq:
+                            ss["rq_last"] = rq
+                            st.toast("Live related queries updated", icon="✅")
+                        else:
+                            st.toast("No related queries – showing demo.", icon="ℹ️")
+                    except TooManyRequestsError:
+                        if ss["rq_last"] is not None:
+                            st.toast("Rate limited – showing last live related queries", icon="⚠️")
+                        else:
+                            st.toast("Rate limited – showing demo word cloud", icon="⚠️")
+                st.rerun()
+    with colL:
+        use_rq = ss["rq_last"] if ss["rq_last"] is not None else demo_related()
+        img = wordcloud_from_related(use_rq.get("top"), use_rq.get("rising"))
+        st.image(img, caption=f"Related queries – {keywords[0]}", use_column_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
