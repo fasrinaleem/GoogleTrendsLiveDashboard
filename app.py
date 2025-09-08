@@ -1,349 +1,343 @@
 # app.py
-import streamlit as st
-import pandas as pd
-import numpy as np
+import time
 from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
+import streamlit as st
 from pytrends.exceptions import TooManyRequestsError
 
-from trends import get_client, interest_over_time, monthly_region_frames, related_queries
-from viz import line_with_spikes, animated_choropleth, wordcloud_from_related, kpi_card, sparkline
 from trends import (
-    get_client, interest_over_time, monthly_region_frames, related_queries,
-    trending_today, trending_realtime
+    get_client,
+    interest_over_time,
+    monthly_region_frames,
+    related_queries,
+    trending_today,
+    trending_realtime,
+)
+from viz import (
+    line_with_spikes,
+    animated_choropleth,
+    wordcloud_from_related,
+    kpi_card,
+    sparkline,
 )
 
-# Create session_state alias
-ss = st.session_state
-# Initialize keys if not already set
-if "trend_nonce" not in ss: ss.trend_nonce = 0
-if "trend_time" not in ss: ss.trend_time = None
-if "trend_daily" not in ss: ss.trend_daily = None
-if "trend_rt" not in ss: ss.trend_rt = None
-
-
-# ---------- Page + styles ----------
+# ────────────────────────── Page + base styles ──────────────────────────
 st.set_page_config(page_title="Trends Studio", layout="wide")
 
-st.markdown("""
+st.markdown(
+    """
 <style>
-/* Light gradient hero */
-.hero {
-  background: radial-gradient(1200px 400px at 20% -10%, rgba(109,40,217,0.10), transparent),
-              linear-gradient(90deg, rgba(109,40,217,0.10), rgba(37,99,235,0.08));
-  border-radius: 18px; padding: 18px 22px; margin-bottom: 14px;
-  border: 1px solid #e9eaf0;
+:root{
+  --card-brd:#e9eaf0; --muted:#64748b; --ink:#0f172a; --ink-2:#111827;
+  --chip:#eef2ff; --chip-brd:#c7d2fe; --chip-ink:#3730a3;
+  --warn:#fef3c7; --warn-brd:#fde68a; --warn-ink:#92400e;
 }
-.hero h1 { margin: 0; font-size: 1.9rem; line-height: 1.25; }
-.subtle { color: #475569; font-size: 0.95rem; margin-top: 4px; }
-
-/* Cards */
-.card {
-  background: #ffffff;
-  border: 1px solid #e9eaf0;
-  border-radius: 16px;
-  padding: 16px;
-  box-shadow: 0 6px 20px rgba(17, 24, 39, 0.06);
+html, body, .stApp{background:#ffffff;}
+.hero{
+  background: radial-gradient(1200px 420px at 12% -15%, rgba(109,40,217,.12), transparent),
+              linear-gradient(90deg, rgba(109,40,217,.10), rgba(37,99,235,.08));
+  border:1px solid var(--card-brd); border-radius:18px; padding:18px 22px; margin: 10px 0 16px 0;
+  box-shadow: 0 8px 26px rgba(17,24,39,.06);
 }
-.card h3 { margin-top: 0; }
+.hero h1{margin:0; font-size:1.9rem; line-height:1.25;}
+.subtle{color:#475569; font-size:.95rem; margin-top:6px;}
 
-/* KPI pills */
-.kpi {
-  display:flex; flex-direction:column; gap:6px; padding:12px 14px; border-radius:12px;
-  background: linear-gradient(180deg, #ffffff, #fafbff);
-  border:1px solid #e9eaf0;
-  box-shadow: 0 4px 16px rgba(17,24,39,0.05);
+.section{
+  background: linear-gradient(180deg, #fff, #fbfcff);
+  border:1px solid var(--card-brd); border-radius:18px;
+  padding:16px; margin: 6px 0 18px 0;
+  box-shadow: 0 8px 24px rgba(17,24,39,.05);
 }
-.kpi-label { color:#64748b; font-size:0.75rem; letter-spacing:.03em; text-transform:uppercase;}
-.kpi-value { font-size:1.25rem; font-weight:800; color:#111827;}
-.kpi-delta { margin-left:8px; font-size:.85rem; color:#16a34a; }
-
-/* Chips */
-.chip { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.75rem;
-  background: #eef2ff; border:1px solid #c7d2fe; color:#3730a3; }
-.chip.warn { background:#fef3c7; border-color:#fde68a; color:#92400e; }
-
-/* Section titles */
-.section-title { font-size:1.05rem; color:#0f172a; margin-bottom:8px; font-weight:700; }
-
-.card ul, .card li { margin: 0; padding-left: 0; }
-.card li { list-style: none; margin-bottom: 6px; }
-.card li::before { content: "• "; color: #6D28D9; font-weight: 700; margin-right: 4px; }
-
+.section-h{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
+.section-h h2{margin:0; font-size:1.25rem; color:var(--ink);}
+.kpi{display:flex; flex-direction:column; gap:6px; padding:12px 14px; border-radius:12px;
+     background:linear-gradient(180deg,#fff,#f9fbff); border:1px solid var(--card-brd);
+     box-shadow:0 6px 16px rgba(17,24,39,.06);}
+.kpi-label{color:var(--muted); font-size:.72rem; letter-spacing:.03em; text-transform:uppercase;}
+.kpi-value{font-size:1.32rem; font-weight:800; color:var(--ink-2);}
+.chip{display:inline-block; padding:6px 10px; border-radius:999px; font-size:.75rem;
+      background:var(--chip); border:1px solid var(--chip-brd); color:var(--chip-ink);}
+.chip.warn{background:var(--warn); border-color:var(--warn-brd); color:var(--warn-ink);}
+.caption{color:var(--muted); font-size:.85rem;}
+.small-gap{margin-top:8px}
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     '<div class="hero"><h1>✨ Trends Studio</h1>'
     '<div class="subtle">Instant overview • Live on demand • Annotated lines • Animated map • Word cloud</div></div>',
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
-# ---- Trending caches ----
-@st.cache_data(ttl=600, show_spinner=False)
-def cached_trending_today(geo_name="australia", _nonce: int = 0):
-    pytrends = get_client()
-    return trending_today(pytrends, geo=geo_name)
 
-@st.cache_data(ttl=600, show_spinner=False)
-def cached_trending_realtime(country_code="AU", cat="all", _nonce: int = 0):
-    pytrends = get_client()
-    return trending_realtime(pytrends, geo=country_code, cat=cat)
-
-# ---------- Caches for live ----------
-@st.cache_data(ttl=900, show_spinner=False)
-def live_ts(keywords, timeframe, geo):
-    pytrends = get_client()
-    return interest_over_time(pytrends, keywords, timeframe=timeframe, geo=geo)
-
-@st.cache_data(ttl=900, show_spinner=False)
-def live_frames(keyword, months):
-    pytrends = get_client()
-    return monthly_region_frames(pytrends, keyword=keyword, months=months, geo="")
-
-@st.cache_data(ttl=900, show_spinner=False)
-def live_related(keyword, timeframe, geo):
-    pytrends = get_client()
-    pytrends.build_payload([keyword], timeframe=timeframe, geo=geo)
-    return related_queries(pytrends, keyword)
-    
-# ========= 🔥 Trending Now (button + visible refresh) =========
-st.markdown("<div class='card'>", unsafe_allow_html=True)
-st.markdown("### 🔥 Top Trending Searches Today")
-
-btn_col, chip_col = st.columns([1, 5])
-with btn_col:
-    if st.button("🔄 Fetch live trending", key="btn_trending"):
-        ss.trend_nonce += 1  # bump nonce to force cache miss
-        # pull fresh
-        ss.trend_daily = cached_trending_today("australia", ss.trend_nonce)
-        ss.trend_rt    = cached_trending_realtime("AU", "all", ss.trend_nonce)
-        from datetime import datetime
-        ss.trend_time = datetime.now().strftime("%H:%M")
-        st.rerun()
-
-with chip_col:
-    if ss.trend_time:
-        st.markdown(f"<span class='chip'>Live @ {ss.trend_time}</span>", unsafe_allow_html=True)
-    else:
-        st.markdown("<span class='chip warn'>Demo until you fetch live</span>", unsafe_allow_html=True)
-
-colA, colB = st.columns(2)
-
-with colA:
-    st.caption("Daily Trending — Australia")
-    daily = ss.trend_daily
-    if daily is None or daily.empty or "query" not in daily.columns:
-        # fallback list
-        items = ["AFL finals", "Fuel prices", "Weather radar", "Bitcoin price"]
-    else:
-        items = daily["query"].astype(str).tolist()[:10]
-    for q in items:
-        st.markdown(f"- {q}")
-
-with colB:
-    st.caption("Realtime Trending — Perth (AU)*")
-    rt = ss.trend_rt
-    titles = []
-    if rt is not None and not rt.empty:
-        # Perth filter (title, entityNames, articles)
-        def contains(col):
-            return rt[col].astype(str).str.contains("Perth", case=False, na=False) if col in rt.columns else False
-        mask = contains("title")
-        if "entityNames" in rt.columns: mask = mask | contains("entityNames")
-        if "articles" in rt.columns:    mask = mask | contains("articles")
-        filt = rt[mask] if mask.any() else rt
-        title_col = "title" if "title" in filt.columns else filt.columns[0]
-        titles = filt[title_col].astype(str).tolist()[:8]
-
-    if not titles:
-        titles = ["Perth weather update", "Perth traffic", "Perth events this weekend", "Optus Stadium news"]
-
-    for t in titles:
-        st.markdown(f"- **{t}**")
-    st.caption("*Realtime is provided at country-level by Google; filtered to items mentioning ‘Perth’.")
-st.markdown("</div>", unsafe_allow_html=True)
-# ========= end Trending Now =========
-
-# ---------- Sidebar controls ----------
-with st.sidebar:
-    st.subheader("Controls")
-    kw_text = st.text_input("Keywords", "AI, Data Analytics")
-    timeframe = st.selectbox("Timeframe", ["today 12-m","today 3-m","now 7-d","today 5-y"])
-    geo = st.text_input("Region (ISO-2, blank = worldwide)", "")
-    months = st.slider("Animated Map months", 3, 12, 6)
-    st.markdown("---")
-    preview_only = st.checkbox("Preview mode (no live calls)", value=True,
-                               help="Keeps everything snappy; fetch live data only when you click a button.")
-
-def parse_keywords(s: str): 
-    return [x.strip() for x in s.split(",") if x.strip()][:5]
-
-keywords = parse_keywords(kw_text) or ["AI"]
-
-# ---------- Demo data for instant render ----------
-def demo_ts(keywords=("AI","Data Analytics"), days=120):
-    end = datetime.utcnow().date(); start = end - timedelta(days=days)
-    rng = pd.date_range(start, end, freq="D")
-    df = pd.DataFrame({"date": rng})
-    for i, kw in enumerate(keywords):
-        base = 45 + i*4
-        s = base + 18*np.sin(np.linspace(0, 6, len(rng))) + np.random.RandomState(33+i).randn(len(rng))*3
-        s[int(len(rng)*0.30)] += 28; s[int(len(rng)*0.55)] += 18
-        df[kw] = np.clip(s, 0, 100).round().astype(int)
-    return df
-
-def demo_frames(keyword="AI"):
-    return pd.DataFrame([
-        {"region":"Australia","value":70,"iso2":"AU","date_frame":"T1"},
-        {"region":"United States","value":58,"iso2":"US","date_frame":"T1"},
-        {"region":"India","value":62,"iso2":"IN","date_frame":"T1"},
-        {"region":"United Kingdom","value":50,"iso2":"GB","date_frame":"T1"},
-        {"region":"Australia","value":48,"iso2":"AU","date_frame":"T2"},
-        {"region":"United States","value":69,"iso2":"US","date_frame":"T2"},
-        {"region":"India","value":75,"iso2":"IN","date_frame":"T2"},
-        {"region":"United Kingdom","value":41,"iso2":"GB","date_frame":"T2"},
-    ])
-
-def demo_related():
-    top = pd.DataFrame({"query":["what is ai","Data Analytics login","ai tools"],"value":[80,65,50]})
-    rising = pd.DataFrame({"query":["ai agents","gpt-4o","prompt ideas"],"value":[120,100,95]})
-    return {"top": top, "rising": rising}
-
-# Keep last good live results in session
+# ────────────────────────── Session keys ──────────────────────────
 ss = st.session_state
 ss.setdefault("ts_last", None)
 ss.setdefault("frames_last", None)
 ss.setdefault("rq_last", None)
-
-# ---------- Initialize session keys for trending today ----------
-ss = st.session_state
 ss.setdefault("trend_nonce", 0)
 ss.setdefault("trend_time", None)
 ss.setdefault("trend_daily", None)
 ss.setdefault("trend_rt", None)
+ss.setdefault("controls_sig", None)
+ss.setdefault("last_auto_ts", 0.0)
+ss.setdefault("last_auto_map", 0.0)
+ss.setdefault("last_auto_rq", 0.0)
 
-# ---------- Overview row (KPIs + sparklines) ----------
-ov = st.container()
-with ov:
-    colK, colS = st.columns([1, 3])
-    with colK:
-        demo = demo_ts(tuple(keywords[:2]))
-        last_vals = [int(demo[k].iloc[-1]) for k in demo.columns if k!="date"]
-        avg_vals  = [int(demo[k].rolling(7, min_periods=1).mean().iloc[-1]) for k in demo.columns if k!="date"]
-        st.markdown(kpi_card("Now (demo)", f"{last_vals[0]}"), unsafe_allow_html=True)
-        st.markdown(kpi_card("7-day avg", f"{avg_vals[0]}"), unsafe_allow_html=True)
-        if ss["ts_last"] is not None:
-            st.markdown("<span class='chip'>Live data loaded</span>", unsafe_allow_html=True)
-        else:
-            st.markdown("<span class='chip warn'>Using demo until you fetch live</span>", unsafe_allow_html=True)
-    with colS:
-        st.markdown("<div class='section-title'>Interest Over Time (Annotated Spikes)</div>", unsafe_allow_html=True)
-        st.plotly_chart(
-            line_with_spikes(demo, [c for c in demo.columns if c!='date']),
-            use_container_width=True, key="overview_demo"
-        )
+# ────────────────────────── Sidebar controls ──────────────────────────
+with st.sidebar:
+    st.subheader("Controls")
+    kw_text = st.text_input("Keywords", "AI, Data")
+    timeframe = st.selectbox("Timeframe", ["today 12-m", "today 3-m", "now 7-d", "today 5-y"])
+    geo = st.text_input("Region (ISO-2, blank = worldwide)", "")
+    months = st.slider("Animated Map – months", 3, 12, 7, help="Number of monthly frames for the map animation.")
+    st.markdown("---")
+    live_api = st.checkbox("Live API calls (disable to use Demo)", value=False)
+    live_ticker = st.checkbox("Live ticker (auto refresh every 60s)", value=True, help="Only when Live API calls are ON")
 
-# ---------- Tabs ----------
-tab1, tab2, tab3 = st.tabs(["📈 Trends", "🗺️ Map", "🔤 Related"])
+def parse_keywords(s: str) -> list[str]:
+    return [x.strip() for x in s.split(",") if x.strip()][:5]
 
-# -- Tab 1: Trends ---------------------------------------------------------
-with tab1:
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.write("**Live (on-demand)**")
-        if preview_only:
-            st.info("Preview mode is on. Uncheck in the sidebar to enable live fetch.")
-        else:
-            if st.button("Fetch live time series", use_container_width=True, key="btn_ts"):
-                with st.spinner("Pulling latest from Google Trends…"):
-                    try:
-                        df = live_ts(keywords, timeframe, geo)
-                        if not df.empty:
-                            ss["ts_last"] = df
-                            st.toast("Live time series updated", icon="✅")
-                        else:
-                            st.toast("No live data for those settings. Showing demo.", icon="ℹ️")
-                    except TooManyRequestsError:
-                        if ss["ts_last"] is not None:
-                            st.toast("Rate limited – showing last live data", icon="⚠️")
-                        else:
-                            st.toast("Rate limited – showing demo", icon="⚠️")
-                st.rerun()
+keywords = parse_keywords(kw_text) or ["AI"]
 
-        df_show = ss["ts_last"] if ss["ts_last"] is not None else demo
-        lbl = "Live" if ss["ts_last"] is not None else "Demo"
-        st.caption(f"Showing: {lbl}")
-        st.plotly_chart(
-            line_with_spikes(df_show, keywords[: len([c for c in df_show.columns if c!='date'])]),
-            use_container_width=True, key="trends_live"
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
+# Reset stale live data when controls change
+def controls_fingerprint() -> str:
+    return f"{','.join(keywords)}|{timeframe}|{geo}|{months}"
 
-    with c2:
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.write("**Sparklines**")
-        base_df = ss["ts_last"] if ss["ts_last"] is not None else demo
-        for k in [c for c in base_df.columns if c != "date"]:
-            st.caption(k)
-            st.plotly_chart(sparkline(base_df, k), use_container_width=True, theme=None, key=f"spark_{k}")
-        st.markdown("</div>", unsafe_allow_html=True)
+sig = controls_fingerprint()
+if ss.controls_sig is None:
+    ss.controls_sig = sig
+elif ss.controls_sig != sig:
+    ss.controls_sig = sig
+    ss.ts_last = None
+    ss.frames_last = None
+    ss.rq_last = None
 
-# -- Tab 2: Map ------------------------------------------------------------
-with tab2:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    colL, colR = st.columns([3,1])
-    with colR:
-        st.write("**Live (on-demand)**")
-        if preview_only:
-            st.info("Preview mode is on. Uncheck in the sidebar to enable live fetch.")
-        else:
-            if st.button("Fetch live map", use_container_width=True, key="btn_map"):
-                with st.spinner("Building monthly frames…"):
-                    try:
-                        frames = live_frames(keywords[0], months)
-                        if not frames.empty:
-                            ss["frames_last"] = frames
-                            st.toast("Live map updated", icon="✅")
-                        else:
-                            st.toast("No regional data. Showing demo.", icon="ℹ️")
-                    except TooManyRequestsError:
-                        if ss["frames_last"] is not None:
-                            st.toast("Rate limited – showing last live map", icon="⚠️")
-                        else:
-                            st.toast("Rate limited – showing demo map", icon="⚠️")
-                st.rerun()
-    with colL:
-        frames_show = ss["frames_last"] if ss["frames_last"] is not None else demo_frames(keywords[0])
-        st.caption("Animated regional interest")
-        st.plotly_chart(animated_choropleth(frames_show), use_container_width=True, key="map")
-    st.markdown("</div>", unsafe_allow_html=True)
+# Optional gentle page auto-reload (JS fallback; Streamlit removed experimental_autorefresh)
+if live_api and live_ticker:
+    st.markdown(
+        "<script>setTimeout(() => { window.location.reload(); }, 60000);</script>",
+        unsafe_allow_html=True,
+    )
 
-# -- Tab 3: Related --------------------------------------------------------
-with tab3:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    colL, colR = st.columns([3,1])
-    with colR:
-        st.write("**Live (on-demand)**")
-        if preview_only:
-            st.info("Preview mode is on. Uncheck in the sidebar to enable live fetch.")
-        else:
-            if st.button("Fetch live related", use_container_width=True, key="btn_related"):
-                with st.spinner("Fetching related queries…"):
-                    try:
-                        rq = live_related(keywords[0], timeframe, geo)
-                        if rq:
-                            ss["rq_last"] = rq
-                            st.toast("Live related queries updated", icon="✅")
-                        else:
-                            st.toast("No related queries – showing demo.", icon="ℹ️")
-                    except TooManyRequestsError:
-                        if ss["rq_last"] is not None:
-                            st.toast("Rate limited – showing last live related queries", icon="⚠️")
-                        else:
-                            st.toast("Rate limited – showing demo word cloud", icon="⚠️")
-                st.rerun()
-    with colL:
-        use_rq = ss["rq_last"] if ss["rq_last"] is not None else demo_related()
-        img = wordcloud_from_related(use_rq.get("top"), use_rq.get("rising"))
-        st.image(img, caption=f"Related queries – {keywords[0]}", use_column_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+# ────────────────────────── Demo generators (instant UI) ──────────────────────────
+def demo_ts(keys=("AI", "Data"), days=180) -> pd.DataFrame:
+    end = datetime.utcnow().date()
+    start = end - timedelta(days=days)
+    rng = pd.date_range(start, end, freq="D")
+    df = pd.DataFrame({"date": rng})
+    for i, kw in enumerate(keys):
+        base = 45 + i * 3
+        s = base + 18 * np.sin(np.linspace(0, 6, len(rng))) + np.random.RandomState(33 + i).randn(len(rng)) * 3
+        s[int(len(rng) * 0.30)] += 25
+        s[int(len(rng) * 0.55)] += 18
+        df[kw] = np.clip(s, 0, 100).round().astype(int)
+    return df
+
+def demo_frames(keyword="AI", months_count: int = 6) -> pd.DataFrame:
+    # produce simple, readable month frames
+    end = datetime.utcnow().date().replace(day=1)
+    frames = []
+    for m in range(months_count, 0, -1):
+        label = (end - pd.DateOffset(months=m-1)).strftime("%b %Y")
+        frames += [
+            {"region": "Australia", "value": 50 + (m % 5) * 4, "iso2": "AU", "date_frame": label},
+            {"region": "United States", "value": 45 + (m % 6) * 3, "iso2": "US", "date_frame": label},
+            {"region": "India", "value": 48 + (m % 4) * 6, "iso2": "IN", "date_frame": label},
+            {"region": "United Kingdom", "value": 40 + (m % 3) * 5, "iso2": "GB", "date_frame": label},
+        ]
+    return pd.DataFrame(frames)
+
+def demo_related():
+    top = pd.DataFrame({"query": ["what is ai", "data analytics login", "ai tools"], "value": [80, 65, 50]})
+    rising = pd.DataFrame({"query": ["ai agents", "gpt-4o", "prompt ideas"], "value": [120, 100, 95]})
+    return {"top": top, "rising": rising}
+
+# ────────────────────────── Section 0: Trending Today ──────────────────────────
+st.markdown('<div class="section">', unsafe_allow_html=True)
+st.markdown('<div class="section-h"><h2>🔥 Top Trending Searches Today</h2></div>', unsafe_allow_html=True)
+left, right = st.columns([1, 1])
+
+with left:
+    if st.button("🔄 Fetch live trending", key="btn_trending"):
+        ss.trend_nonce += 1
+        try:
+            py = get_client()
+            ss.trend_daily = trending_today(py, geo="australia")
+            ss.trend_rt = trending_realtime(py, geo="AU", cat="all")
+            ss.trend_time = datetime.now().strftime("%H:%M")
+            st.toast("Trending updated", icon="✅")
+        except Exception:
+            st.toast("Couldn’t refresh trending. Showing fallback.", icon="⚠️")
+
+    st.caption("Daily Trending — Australia")
+    daily = ss.trend_daily
+    items = (
+        daily["query"].astype(str).tolist()[:10]
+        if (daily is not None and not daily.empty and "query" in daily.columns)
+        else ["AFL finals", "Fuel prices", "Weather radar", "Bitcoin price"]
+    )
+    st.markdown("\n".join([f"- {q}" for q in items]))
+
+with right:
+    st.caption("Realtime Trending — Perth (AU)*")
+    rt = ss.trend_rt
+    titles = []
+    if rt is not None and not rt.empty:
+        def contains(col):
+            return rt[col].astype(str).str.contains("Perth", case=False, na=False) if col in rt.columns else False
+        mask = contains("title")
+        if "entityNames" in rt.columns:
+            mask = mask | contains("entityNames")
+        if "articles" in rt.columns:
+            mask = mask | contains("articles")
+        filt = rt[mask] if (isinstance(mask, pd.Series) and mask.any()) else rt
+        name_col = "title" if "title" in filt.columns else filt.columns[0]
+        titles = filt[name_col].astype(str).tolist()[:8]
+    if not titles:
+        titles = ["Perth weather update", "Perth traffic", "Perth events this weekend", "Optus Stadium news"]
+    st.markdown("\n".join([f"- **{t}**" for t in titles]))
+    st.caption("※ Realtime is provided at country level by Google; filtered to items mentioning “Perth”.")
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ────────────────────────── Section 1: Overview (KPIs + Line) ──────────────────────────
+st.markdown('<div class="section">', unsafe_allow_html=True)
+st.markdown('<div class="section-h"><h2>📈 Interest Over Time (Annotated)</h2></div>', unsafe_allow_html=True)
+
+kpi_col, chart_col, spark_col = st.columns([0.9, 2.2, 1.1])
+
+df_overview = ss.ts_last if ss.ts_last is not None else demo_ts(tuple(keywords[:2]))
+series_cols = [c for c in df_overview.columns if c != "date"]
+
+with kpi_col:
+    now_vals = [int(df_overview[c].iloc[-1]) for c in series_cols]
+    avg_vals = [int(df_overview[c].rolling(7, min_periods=1).mean().iloc[-1]) for c in series_cols]
+    label_now = "NOW (LIVE)" if ss.ts_last is not None else "NOW (DEMO)"
+    st.markdown(kpi_card(label_now, f"{now_vals[0]}"), unsafe_allow_html=True)
+    st.markdown(kpi_card("7-DAY AVG", f"{avg_vals[0]}"), unsafe_allow_html=True)
+    if ss.ts_last is None:
+        st.markdown('<span class="chip warn small-gap">Using demo until you fetch live</span>', unsafe_allow_html=True)
+    else:
+        st.markdown('<span class="chip small-gap">Live loaded</span>', unsafe_allow_html=True)
+
+with chart_col:
+    st.plotly_chart(line_with_spikes(df_overview, series_cols), use_container_width=True, key="overview_chart")
+
+with spark_col:
+    st.write("**Sparklines**")
+    base_df = ss.ts_last if ss.ts_last is not None else df_overview
+    for k in [c for c in base_df.columns if c != "date"]:
+        st.caption(k)
+        st.plotly_chart(sparkline(base_df, k), use_container_width=True, theme=None, key=f"spark_{k}")
+
+st.divider()
+live_l, live_r = st.columns([1.7, 1])
+with live_l:
+    st.write("**Live (on-demand)**")
+    if not live_api:
+        st.info("Live API calls are OFF (using Demo). Turn them on in the sidebar.")
+    else:
+        if st.button("⚡ Fetch live time series", key="btn_ts", use_container_width=True):
+            with st.spinner("Pulling latest from Google Trends…"):
+                try:
+                    df = interest_over_time(get_client(), keywords, timeframe=timeframe, geo=geo)
+                    if not df.empty:
+                        ss.ts_last = df
+                        st.toast("Live time series updated", icon="✅")
+                    else:
+                        st.toast("No live data for those settings. Showing demo.", icon="ℹ️")
+                except TooManyRequestsError:
+                    st.toast("Rate limited – try again later.", icon="⚠️")
+            st.rerun()
+        # Auto-pull every 60s when ticker is enabled
+        if live_ticker and time.time() - ss.last_auto_ts > 60:
+            try:
+                df = interest_over_time(get_client(), keywords, timeframe=timeframe, geo=geo)
+                if not df.empty:
+                    ss.ts_last = df
+                ss.last_auto_ts = time.time()
+            except Exception:
+                pass
+
+with live_r:
+    st.write("")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ────────────────────────── Section 2: Animated Map ──────────────────────────
+st.markdown('<div class="section">', unsafe_allow_html=True)
+st.markdown('<div class="section-h"><h2>🗺️ Animated Map — Interest by Region</h2></div>', unsafe_allow_html=True)
+
+map_l, map_r = st.columns([3, 1])
+with map_l:
+    frames_show = ss.frames_last if ss.frames_last is not None else demo_frames(keywords[0], months)
+    st.plotly_chart(animated_choropleth(frames_show), use_container_width=True, key="map_fig")
+with map_r:
+    st.write("**Live (on-demand)**")
+    if not live_api:
+        st.info("Live API calls are OFF (using Demo). Turn them on in the sidebar.")
+    else:
+        if st.button("🧭 Fetch live map", key="btn_map", use_container_width=True):
+            with st.spinner("Building monthly frames…"):
+                try:
+                    frames = monthly_region_frames(get_client(), keyword=keywords[0], months=months, geo="")
+                    if not frames.empty:
+                        ss.frames_last = frames
+                        st.toast("Live map updated", icon="✅")
+                    else:
+                        st.toast("No regional data. Showing demo.", icon="ℹ️")
+                except TooManyRequestsError:
+                    st.toast("Rate limited – try again later.", icon="⚠️")
+            st.rerun()
+        if live_ticker and time.time() - ss.last_auto_map > 300:  # refresh map every 5 min
+            try:
+                frames = monthly_region_frames(get_client(), keyword=keywords[0], months=months, geo="")
+                if not frames.empty:
+                    ss.frames_last = frames
+                ss.last_auto_map = time.time()
+            except Exception:
+                pass
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ────────────────────────── Section 3: Related → Word Cloud ──────────────────────────
+st.markdown('<div class="section">', unsafe_allow_html=True)
+st.markdown('<div class="section-h"><h2>🔤 Related Queries — Word Cloud</h2></div>', unsafe_allow_html=True)
+
+rel_l, rel_r = st.columns([3, 1])
+with rel_l:
+    use_rq = ss.rq_last if ss.rq_last is not None else demo_related()
+    img = wordcloud_from_related(use_rq.get("top"), use_rq.get("rising"))
+    st.image(img, caption=f"Related queries — {keywords[0]} (first keyword)", use_column_width=True)
+with rel_r:
+    st.write("**Live (on-demand)**")
+    if not live_api:
+        st.info("Live API calls are OFF (using Demo). Turn them on in the sidebar.")
+    else:
+        if st.button("🔎 Fetch live related", key="btn_related", use_container_width=True):
+            with st.spinner("Fetching related queries…"):
+                try:
+                    rq = related_queries(get_client(), keywords[0])
+                    if rq:
+                        ss.rq_last = rq
+                        st.toast("Live related queries updated", icon="✅")
+                    else:
+                        st.toast("No related queries – showing demo.", icon="ℹ️")
+                except TooManyRequestsError:
+                    st.toast("Rate limited – try again later.", icon="⚠️")
+            st.rerun()
+        if live_ticker and time.time() - ss.last_auto_rq > 180:  # refresh related every 3 min
+            try:
+                rq = related_queries(get_client(), keywords[0])
+                if rq:
+                    ss.rq_last = rq
+                ss.last_auto_rq = time.time()
+            except Exception:
+                pass
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Footer hint (demo/live status)
+mode_live = any(x is not None for x in (ss.ts_last, ss.frames_last, ss.rq_last))
+st.caption(f"Showing: {'Live' if mode_live else 'Demo'}")

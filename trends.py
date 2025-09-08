@@ -1,5 +1,6 @@
+# trends.py
 import datetime as dt
-import time, random
+import random, time
 import pandas as pd
 import requests
 from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_if_exception_type
@@ -8,7 +9,7 @@ from pytrends.exceptions import TooManyRequestsError
 
 # Gentle throttle so Google doesn’t 429 you.
 BASE_SLEEP_SEC = 5.0
-JITTER_SEC     = 2.0
+JITTER_SEC = 2.0
 def _sleep():
     time.sleep(BASE_SLEEP_SEC + random.uniform(0, JITTER_SEC))
 
@@ -42,7 +43,8 @@ def interest_over_time(pytrends, keywords, timeframe="today 12-m", geo=""):
     _build(pytrends, keywords, timeframe, geo)
     df = pytrends.interest_over_time()
     _sleep()
-    if df is None or df.empty: return pd.DataFrame()
+    if df is None or df.empty:
+        return pd.DataFrame()
     return df.drop(columns=["isPartial"], errors="ignore").reset_index()
 
 @retry(stop=stop_after_attempt(4), wait=wait_random_exponential(multiplier=2, max=90),
@@ -57,7 +59,8 @@ def related_queries(pytrends, keyword):
 def interest_by_region(pytrends, keywords, resolution="COUNTRY"):
     df = pytrends.interest_by_region(resolution=resolution, inc_low_vol=True, inc_geo_code=True)
     _sleep()
-    if df is None or df.empty: return pd.DataFrame()
+    if df is None or df.empty:
+        return pd.DataFrame()
     return df.reset_index().rename(columns={"geoName": "region"})
 
 def monthly_region_frames(pytrends, keyword, months=6, geo="", resolution="COUNTRY"):
@@ -68,23 +71,20 @@ def monthly_region_frames(pytrends, keyword, months=6, geo="", resolution="COUNT
         timeframe = f"{start} {end}"
         _build(pytrends, [keyword], timeframe, geo)
         reg = interest_by_region(pytrends, [keyword], resolution=resolution)
-        if reg.empty: continue
+        if reg.empty:
+            continue
         key_cols = [c for c in reg.columns if c.lower() == keyword.lower()]
         key_col  = key_cols[0] if key_cols else (reg.select_dtypes("number").columns.tolist() or [None])[0]
-        if key_col is None: continue
+        if key_col is None:
+            continue
         subset = ["region", key_col] + [c for c in reg.columns if c == "geoCode"]
         df = reg[subset].rename(columns={key_col: "value", "geoCode": "iso2"})
-        df["date_frame"] = str(end)
+        # Human-readable month label for animation frame
+        df["date_frame"] = end.strftime("%b %Y")
         frames.append(df)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-import pandas as pd
-from pytrends.exceptions import TooManyRequestsError
-
 # --- Trending searches (daily + realtime) with safe fallbacks ---
-import pandas as pd
-from pytrends.exceptions import TooManyRequestsError
-
 def trending_today(pytrends, geo="australia"):
     try:
         df = pytrends.trending_searches(pn=geo)
@@ -112,4 +112,3 @@ def trending_realtime(pytrends, geo="AU", cat="all"):
         "Matildas match", "ASX today", "Cold snap Australia",
         "New Netflix series", "SpaceX launch"
     ], "traffic": ["—"]*8})
-
