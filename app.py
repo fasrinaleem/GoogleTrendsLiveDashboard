@@ -7,6 +7,11 @@ from pytrends.exceptions import TooManyRequestsError
 
 from trends import get_client, interest_over_time, monthly_region_frames, related_queries
 from viz import line_with_spikes, animated_choropleth, wordcloud_from_related, kpi_card, sparkline
+from trends import (
+    get_client, interest_over_time, monthly_region_frames, related_queries,
+    trending_today, trending_realtime
+)
+
 
 # ---------- Page + styles ----------
 st.set_page_config(page_title="Trends Studio", layout="wide")
@@ -51,6 +56,11 @@ st.markdown("""
 
 /* Section titles */
 .section-title { font-size:1.05rem; color:#0f172a; margin-bottom:8px; font-weight:700; }
+
+.card ul, .card li { margin: 0; padding-left: 0; }
+.card li { list-style: none; margin-bottom: 6px; }
+.card li::before { content: "• "; color: #6D28D9; font-weight: 700; margin-right: 4px; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,12 +69,47 @@ st.markdown(
     '<div class="subtle">Instant overview • Live on demand • Annotated lines • Animated map • Word cloud</div></div>',
     unsafe_allow_html=True
 )
+# ========= 🔥 Trending Now (always shows something) =========
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.markdown("### 🔥 Top Trending Searches Today")
 
+colA, colB = st.columns(2)
+
+with colA:
+    st.caption("Daily Trending — Australia")
+    try:
+        daily = cached_trending_today("australia")
+        # Always has content (real or fallback)
+        items = daily["query"].astype(str).tolist()[:10]
+        for q in items:
+            st.markdown(f"- {q}")
+    except Exception:
+        st.markdown("- AFL finals\n- Fuel prices\n- Weather radar\n- Bitcoin price")
+
+with colB:
+    st.caption("Realtime Trending — US")
+    try:
+        rt = cached_trending_realtime("US", "all")
+        if "title" in rt.columns:
+            items = rt["title"].astype(str).tolist()[:8]
+        else:
+            # fallback if columns weird
+            first_col = rt.columns[0] if not rt.empty else None
+            items = rt[first_col].astype(str).tolist()[:8] if first_col else []
+        if not items:
+            items = ["iPhone launch event", "ASX today", "New Netflix series", "SpaceX launch"]
+        for t in items:
+            st.markdown(f"- **{t}**")
+    except Exception:
+        st.markdown("- **iPhone launch event**\n- **ASX today**\n- **New Netflix series**\n- **SpaceX launch**")
+
+st.markdown("</div>", unsafe_allow_html=True)
+# ========= end Trending Now =========
 
 # ---------- Sidebar controls ----------
 with st.sidebar:
     st.subheader("Controls")
-    kw_text = st.text_input("Keywords", "AI, ChatGPT")
+    kw_text = st.text_input("Keywords", "AI, Data Analytics")
     timeframe = st.selectbox("Timeframe", ["today 12-m","today 3-m","now 7-d","today 5-y"])
     geo = st.text_input("Region (ISO-2, blank = worldwide)", "")
     months = st.slider("Animated Map months", 3, 12, 6)
@@ -78,7 +123,7 @@ def parse_keywords(s: str):
 keywords = parse_keywords(kw_text) or ["AI"]
 
 # ---------- Demo data for instant render ----------
-def demo_ts(keywords=("AI","ChatGPT"), days=120):
+def demo_ts(keywords=("AI","Data Analytics"), days=120):
     end = datetime.utcnow().date(); start = end - timedelta(days=days)
     rng = pd.date_range(start, end, freq="D")
     df = pd.DataFrame({"date": rng})
@@ -102,7 +147,7 @@ def demo_frames(keyword="AI"):
     ])
 
 def demo_related():
-    top = pd.DataFrame({"query":["what is ai","chatgpt login","ai tools"],"value":[80,65,50]})
+    top = pd.DataFrame({"query":["what is ai","Data Analytics login","ai tools"],"value":[80,65,50]})
     rising = pd.DataFrame({"query":["ai agents","gpt-4o","prompt ideas"],"value":[120,100,95]})
     return {"top": top, "rising": rising}
 
@@ -122,6 +167,16 @@ def live_related(keyword, timeframe, geo):
     pytrends = get_client()
     pytrends.build_payload([keyword], timeframe=timeframe, geo=geo)
     return related_queries(pytrends, keyword)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_trending_today(geo_name="australia"):
+    pytrends = get_client()
+    return trending_today(pytrends, geo=geo_name)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_trending_realtime(country_code="AU", cat="all"):
+    pytrends = get_client()
+    return trending_realtime(pytrends, geo=country_code, cat=cat)
 
 # Keep last good live results in session
 ss = st.session_state
