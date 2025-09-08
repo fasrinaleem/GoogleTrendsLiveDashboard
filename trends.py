@@ -82,44 +82,31 @@ import pandas as pd
 from pytrends.exceptions import TooManyRequestsError
 
 # --- Trending searches (daily + realtime) with safe fallbacks ---
+import pandas as pd
+from pytrends.exceptions import TooManyRequestsError
 
 def trending_today(pytrends, geo="australia"):
-    """
-    Daily trending searches. 'geo' = plain country name in lowercase,
-    e.g. 'australia', 'united_states', 'india'.
-    Always returns a DataFrame with column 'query'.
-    """
     try:
         df = pytrends.trending_searches(pn=geo)
         if df is not None and not df.empty:
             df.columns = ["query"]
             return df
-    except TooManyRequestsError:
+    except (TooManyRequestsError, Exception):
         pass
-    except Exception:
-        pass
-    # Fallback demo list (guaranteed content)
     return pd.DataFrame({"query": [
         "AFL finals", "Fuel prices", "Weather radar", "Taylor Swift", "Bitcoin price",
         "Optus outage", "Bunnings hours", "NRL grand final", "Euro to AUD", "Woolworths specials"
     ]})
 
 def trending_realtime(pytrends, geo="AU", cat="all"):
-    """
-    Realtime trending searches (past ~24h). 'geo' = ISO-2 code like 'AU','US','GB'.
-    Always returns a DataFrame with at least a 'title' column.
-    """
     try:
         df = pytrends.realtime_trending_searches(pn=geo, cat=cat)
         if df is not None and not df.empty:
             if "title" not in df.columns:
                 df = df.rename(columns={df.columns[0]: "title"})
             return df
-    except TooManyRequestsError:
+    except (TooManyRequestsError, Exception):
         pass
-    except Exception:
-        pass
-    # Fallback demo list
     return pd.DataFrame({"title": [
         "iPhone launch event", "El Niño update", "RBA interest rates",
         "Matildas match", "ASX today", "Cold snap Australia",

@@ -12,6 +12,14 @@ from trends import (
     trending_today, trending_realtime
 )
 
+# Create session_state alias
+ss = st.session_state
+# Initialize keys if not already set
+if "trend_nonce" not in ss: ss.trend_nonce = 0
+if "trend_time" not in ss: ss.trend_time = None
+if "trend_daily" not in ss: ss.trend_daily = None
+if "trend_rt" not in ss: ss.trend_rt = None
+
 
 # ---------- Page + styles ----------
 st.set_page_config(page_title="Trends Studio", layout="wide")
@@ -69,40 +77,89 @@ st.markdown(
     '<div class="subtle">Instant overview • Live on demand • Annotated lines • Animated map • Word cloud</div></div>',
     unsafe_allow_html=True
 )
-# ========= 🔥 Trending Now (always shows something) =========
+# ---- Trending caches ----
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_trending_today(geo_name="australia", _nonce: int = 0):
+    pytrends = get_client()
+    return trending_today(pytrends, geo=geo_name)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_trending_realtime(country_code="AU", cat="all", _nonce: int = 0):
+    pytrends = get_client()
+    return trending_realtime(pytrends, geo=country_code, cat=cat)
+
+# ---------- Caches for live ----------
+@st.cache_data(ttl=900, show_spinner=False)
+def live_ts(keywords, timeframe, geo):
+    pytrends = get_client()
+    return interest_over_time(pytrends, keywords, timeframe=timeframe, geo=geo)
+
+@st.cache_data(ttl=900, show_spinner=False)
+def live_frames(keyword, months):
+    pytrends = get_client()
+    return monthly_region_frames(pytrends, keyword=keyword, months=months, geo="")
+
+@st.cache_data(ttl=900, show_spinner=False)
+def live_related(keyword, timeframe, geo):
+    pytrends = get_client()
+    pytrends.build_payload([keyword], timeframe=timeframe, geo=geo)
+    return related_queries(pytrends, keyword)
+    
+# ========= 🔥 Trending Now (button + visible refresh) =========
 st.markdown("<div class='card'>", unsafe_allow_html=True)
 st.markdown("### 🔥 Top Trending Searches Today")
+
+btn_col, chip_col = st.columns([1, 5])
+with btn_col:
+    if st.button("🔄 Fetch live trending", key="btn_trending"):
+        ss.trend_nonce += 1  # bump nonce to force cache miss
+        # pull fresh
+        ss.trend_daily = cached_trending_today("australia", ss.trend_nonce)
+        ss.trend_rt    = cached_trending_realtime("AU", "all", ss.trend_nonce)
+        from datetime import datetime
+        ss.trend_time = datetime.now().strftime("%H:%M")
+        st.rerun()
+
+with chip_col:
+    if ss.trend_time:
+        st.markdown(f"<span class='chip'>Live @ {ss.trend_time}</span>", unsafe_allow_html=True)
+    else:
+        st.markdown("<span class='chip warn'>Demo until you fetch live</span>", unsafe_allow_html=True)
 
 colA, colB = st.columns(2)
 
 with colA:
     st.caption("Daily Trending — Australia")
-    try:
-        daily = cached_trending_today("australia")
-        # Always has content (real or fallback)
+    daily = ss.trend_daily
+    if daily is None or daily.empty or "query" not in daily.columns:
+        # fallback list
+        items = ["AFL finals", "Fuel prices", "Weather radar", "Bitcoin price"]
+    else:
         items = daily["query"].astype(str).tolist()[:10]
-        for q in items:
-            st.markdown(f"- {q}")
-    except Exception:
-        st.markdown("- AFL finals\n- Fuel prices\n- Weather radar\n- Bitcoin price")
+    for q in items:
+        st.markdown(f"- {q}")
 
 with colB:
-    st.caption("Realtime Trending — US")
-    try:
-        rt = cached_trending_realtime("US", "all")
-        if "title" in rt.columns:
-            items = rt["title"].astype(str).tolist()[:8]
-        else:
-            # fallback if columns weird
-            first_col = rt.columns[0] if not rt.empty else None
-            items = rt[first_col].astype(str).tolist()[:8] if first_col else []
-        if not items:
-            items = ["iPhone launch event", "ASX today", "New Netflix series", "SpaceX launch"]
-        for t in items:
-            st.markdown(f"- **{t}**")
-    except Exception:
-        st.markdown("- **iPhone launch event**\n- **ASX today**\n- **New Netflix series**\n- **SpaceX launch**")
+    st.caption("Realtime Trending — Perth (AU)*")
+    rt = ss.trend_rt
+    titles = []
+    if rt is not None and not rt.empty:
+        # Perth filter (title, entityNames, articles)
+        def contains(col):
+            return rt[col].astype(str).str.contains("Perth", case=False, na=False) if col in rt.columns else False
+        mask = contains("title")
+        if "entityNames" in rt.columns: mask = mask | contains("entityNames")
+        if "articles" in rt.columns:    mask = mask | contains("articles")
+        filt = rt[mask] if mask.any() else rt
+        title_col = "title" if "title" in filt.columns else filt.columns[0]
+        titles = filt[title_col].astype(str).tolist()[:8]
 
+    if not titles:
+        titles = ["Perth weather update", "Perth traffic", "Perth events this weekend", "Optus Stadium news"]
+
+    for t in titles:
+        st.markdown(f"- **{t}**")
+    st.caption("*Realtime is provided at country-level by Google; filtered to items mentioning ‘Perth’.")
 st.markdown("</div>", unsafe_allow_html=True)
 # ========= end Trending Now =========
 
@@ -151,38 +208,18 @@ def demo_related():
     rising = pd.DataFrame({"query":["ai agents","gpt-4o","prompt ideas"],"value":[120,100,95]})
     return {"top": top, "rising": rising}
 
-# ---------- Caches for live ----------
-@st.cache_data(ttl=900, show_spinner=False)
-def live_ts(keywords, timeframe, geo):
-    pytrends = get_client()
-    return interest_over_time(pytrends, keywords, timeframe=timeframe, geo=geo)
-
-@st.cache_data(ttl=900, show_spinner=False)
-def live_frames(keyword, months):
-    pytrends = get_client()
-    return monthly_region_frames(pytrends, keyword=keyword, months=months, geo="")
-
-@st.cache_data(ttl=900, show_spinner=False)
-def live_related(keyword, timeframe, geo):
-    pytrends = get_client()
-    pytrends.build_payload([keyword], timeframe=timeframe, geo=geo)
-    return related_queries(pytrends, keyword)
-
-@st.cache_data(ttl=600, show_spinner=False)
-def cached_trending_today(geo_name="australia"):
-    pytrends = get_client()
-    return trending_today(pytrends, geo=geo_name)
-
-@st.cache_data(ttl=600, show_spinner=False)
-def cached_trending_realtime(country_code="AU", cat="all"):
-    pytrends = get_client()
-    return trending_realtime(pytrends, geo=country_code, cat=cat)
-
 # Keep last good live results in session
 ss = st.session_state
 ss.setdefault("ts_last", None)
 ss.setdefault("frames_last", None)
 ss.setdefault("rq_last", None)
+
+# ---------- Initialize session keys for trending today ----------
+ss = st.session_state
+ss.setdefault("trend_nonce", 0)
+ss.setdefault("trend_time", None)
+ss.setdefault("trend_daily", None)
+ss.setdefault("trend_rt", None)
 
 # ---------- Overview row (KPIs + sparklines) ----------
 ov = st.container()
