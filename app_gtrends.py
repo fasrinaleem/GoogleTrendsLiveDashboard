@@ -1,49 +1,23 @@
-# app_gtrends.py — ONE FILE VERSION (SerpAPI + PyTrends + Demo)
-# =============================================================================
-# GOALS
-# -----
-# - One sidebar rendered ONCE (prevents duplicate widget-key / session_state errors)
-# - Mutually-exclusive region quick pick (Australia / Perth / Worldwide / Custom)
-# - Per-section "Fetch" buttons (no global rerun button)
-# - Uses SerpAPI when selected, falls back to PyTrends, then Demo
-# - Clear diagnostics why live fetch failed (status pill + details expander)
-# - dd2-style extras: rolling 30d, snapshot-by-role, correlation heatmap
-# - Colored time-series lines (per your request)
-# - No deprecated use_column_width (uses use_container_width=True or width='stretch')
-#
-# REQUIREMENTS
-# ------------
-# pip install streamlit plotly requests pytrends numpy pandas
-#
-# SERPAPI KEY
-# -----------
-# .streamlit/secrets.toml     -> SERPAPI_KEY = "YOUR_REAL_KEY"
-# (or) ENV var SERPAPI_KEY    -> export SERPAPI_KEY=YOUR_REAL_KEY
-#
-# FILES YOU ALREADY HAVE
-# ----------------------
-# - trends.py  : get_client(), interest_over_time(), monthly_region_frames(), related_queries(), trending_today(), trending_realtime()
-# - viz.py     : line_with_spikes(), animated_choropleth(), wordcloud_from_related(), kpi_card(), sparkline()
-# - utils.py   : country_name_to_iso2()
-#
-# NOTES
-# -----
-# - The app loads DEMO by default until you click the per-section Fetch buttons.
-# - Choose data source in the sidebar: SerpAPI / PyTrends / Demo.
-# - If SerpAPI is selected but the key is missing/invalid, sidebar shows a warning.
-# =============================================================================
+# app_gtrends.py — FINAL ONE-FILE VERSION (SerpAPI + PyTrends + Demo)
+# - One sidebar (no duplicate keys)
+# - Per-section fetch/apply buttons (no global reruns)
+# - Mutually-exclusive region quick-pick (Australia / Perth / Worldwide / Custom)
+# - SerpAPI integration (correct params + no_cache) with graceful fallback
+# - "Require live" toggle so you never silently see demo
+# - Live/Demo badges with fetch timestamp and diagnostics
+# - Pick the series you want in the Animated Map
+# - dd2-style extras inlined (snapshot by role, 30d rolling, correlations)
+# - Safer related-queries parsing (Breakout, %, None)
+# - Local colored line_with_spikes so you don't need to edit viz.py
 
 from __future__ import annotations
 
-# ───────────────────────────────── Imports ─────────────────────────────────────
 from datetime import datetime, timedelta
 from urllib.parse import quote
-from typing import Iterable, Optional, Tuple, Dict, Any
-
 import os
 import time
 import json
-import math
+from typing import Iterable, Optional, Tuple, Dict, Any, List
 
 import numpy as np
 import pandas as pd
@@ -53,7 +27,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pytrends.exceptions import TooManyRequestsError
 
-# ── local modules (your originals) ─────────────────────────────────────────────
+# ── local modules you already have ─────────────────────────────────────────────
+# If you renamed any of these, just update the imports.
 from trends import (
     get_client,
     interest_over_time as pytrends_iot,
@@ -63,13 +38,13 @@ from trends import (
     trending_realtime as pytrends_realtime,
 )
 from viz import (
-    line_with_spikes,         # kept (we'll also offer a colored variant below)
     animated_choropleth,
-    wordcloud_from_related,
+    wordcloud_from_related,  # we’ll feed sanitized numbers only
     kpi_card,
     sparkline,
 )
 from utils import country_name_to_iso2  # country-name -> ISO-2
+
 
 # ────────────────────────────── Page setup / theme ─────────────────────────────
 st.set_page_config(page_title="Trends Hub", page_icon="📊", layout="wide")
@@ -80,8 +55,8 @@ st.markdown(
   --card-brd:#e9eaf0; --muted:#64748b; --ink:#0f172a; --ink-2:#111827;
   --chip:#eef2ff; --chip-brd:#c7d2fe; --chip-ink:#3730a3;
   --warn:#fef3c7; --warn-brd:#fde68a; --warn-ink:#92400e;
-  --ok:#ecfdf5; --ok-brd:#a7f3d0; --ok-ink:#065f46;
-  --bad:#fef2f2; --bad-brd:#fecaca; --bad-ink:#991b1b;
+  --okbg:#ecfdf5; --okbrd:#10b981; --okink:#065f46;
+  --errbg:#fef2f2; --errbrd:#fecaca; --erring:#991b1b;
 }
 html, body, .stApp{background:#ffffff;}
 .hero{
@@ -110,15 +85,10 @@ html, body, .stApp{background:#ffffff;}
       background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3;}
 .caption{color:#64748b; font-size:.85rem;}
 .small-gap{margin-top:8px}
-.warn{background:var(--warn);border:1px solid var(--warn-brd);color:var(--warn-ink);
-      border-radius:10px;padding:10px 12px;font-size:.9rem;}
-.bad{background:var(--bad);border:1px solid var(--bad-brd);color:var(--bad-ink);
-      border-radius:10px;padding:10px 12px;font-size:.9rem;}
-.ok{background:var(--ok);border:1px solid var(--ok-brd);color:var(--ok-ink);
-      border-radius:10px;padding:10px 12px;font-size:.9rem;}
-.pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--card-brd);
-     background:#fff;font-size:.8rem}
-hr.soft{border:none;border-top:1px solid var(--card-brd);margin:8px 0 12px 0}
+.warn{background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:.9rem;}
+.ok{background:var(--okbg);border:1px solid var(--okbrd);color:var(--okink);border-radius:10px;padding:8px 10px;font-size:.85rem;display:inline-block;margin:6px 0;}
+.err{background:var(--errbg);border:1px solid var(--errbrd);color:var(--erring);border-radius:10px;padding:8px 10px;font-size:.85rem;display:inline-block;margin:6px 0;}
+hr.sep{border:none;border-top:1px dashed #e5e7eb;margin:10px 0;}
 </style>
 """,
     unsafe_allow_html=True,
@@ -126,47 +96,41 @@ hr.soft{border:none;border-top:1px solid var(--card-brd);margin:8px 0 12px 0}
 
 # ───────────────────────── Small utils ─────────────────────────────────────────
 def chart_key(prefix: str, *parts) -> str:
-    """Short, stable keys for Plotly components to avoid re-mount churn."""
     safe = "|".join(str(p) for p in parts if p is not None)
     return f"{prefix}:{safe}"[:200]
 
-def to_list(x: Iterable[str] | str) -> list[str]:
+def to_list(x: Iterable[str] | str | None) -> list[str]:
     if x is None:
         return []
     if isinstance(x, str):
         return [x]
     return list(x)
 
-def qualitative_palette(n: int) -> list[str]:
-    """Return a qualitative color list with at least n colors."""
-    palettes = [
-        px.colors.qualitative.Plotly,
-        px.colors.qualitative.Safe,
-        px.colors.qualitative.Set2,
-        px.colors.qualitative.Set3,
-        px.colors.qualitative.Pastel,
-        px.colors.qualitative.Bold,
-        px.colors.qualitative.Prism,
-    ]
-    out = []
-    for pal in palettes:
-        out.extend(pal)
-        if len(out) >= n:
-            break
-    # ensure uniqueness order
-    uniq = []
-    for c in out:
-        if c not in uniq:
-            uniq.append(c)
-    return uniq[:max(1, n)]
+def badge_live(df: pd.DataFrame | Dict[str, Any] | None) -> None:
+    """Show a Live/Demo badge based on df attrs set by fetch functions."""
+    if isinstance(df, pd.DataFrame) and not df.empty and df.attrs.get("source"):
+        st.markdown(
+            f"<div class='ok'>Live ✓ · {df.attrs.get('source')} @ {df.attrs.get('fetched_at')}</div>",
+            unsafe_allow_html=True,
+        )
+
+# NEW: safe coercion helper
+def _ensure_df(obj) -> pd.DataFrame:
+    """Coerce anything to a DataFrame (empty if impossible)."""
+    if isinstance(obj, pd.DataFrame):
+        return obj
+    if obj is None:
+        return pd.DataFrame()
+    try:
+        return pd.DataFrame(obj)
+    except Exception:
+        return pd.DataFrame()
 
 # ─────────────────────────── Geo resolver (country/city/world) ─────────────────
 def resolve_geo(user_input: str) -> Tuple[str, str, Optional[str]]:
     """
     Returns (geo_code_for_api, scope_label, city_filter)
-      - '' for worldwide
-      - 'ISO-2' code for country
-      - city_filter is used only for realtime/map filtering text contains
+    '' for worldwide or ISO-2 for country; city_filter used for realtime/map filtering.
     """
     s = (user_input or "").strip()
     if not s:
@@ -199,6 +163,8 @@ def demo_ts(keys=("AI","Data"), days=180) -> pd.DataFrame:
         s = base + 18*np.sin(np.linspace(0,6,len(rng))) + np.random.RandomState(33+i).randn(len(rng))*3
         s[int(len(rng)*0.30)] += 25; s[int(len(rng)*0.55)] += 18
         df[kw] = np.clip(s,0,100).round().astype(int)
+    df.attrs["source"] = "DEMO"
+    df.attrs["fetched_at"] = datetime.utcnow().isoformat()
     return df
 
 def demo_frames(keyword="AI", months_count=6) -> pd.DataFrame:
@@ -211,12 +177,15 @@ def demo_frames(keyword="AI", months_count=6) -> pd.DataFrame:
         use = vals if i%2==0 else alt
         for r,iso2,v in use:
             rows.append({"region":r,"value":v,"iso2":iso2,"date_frame":str(p)})
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    df.attrs["source"] = "DEMO"
+    df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+    return df
 
 def demo_related():
     top = pd.DataFrame({"query":["what is ai","data analytics login","ai tools"],"value":[80,65,50]})
     rising = pd.DataFrame({"query":["ai agents","gpt-4o","prompt ideas"],"value":[120,100,95]})
-    return {"top": top, "rising": rising}
+    return {"top": top, "rising": rising, "_meta":{"source":"DEMO","fetched_at":datetime.utcnow().isoformat()}}
 
 # ───────────────────────────── SerpAPI client ──────────────────────────────────
 SERP_KEY = st.secrets.get("SERPAPI_KEY", os.getenv("SERPAPI_KEY", "")).strip()
@@ -224,23 +193,25 @@ SERP_KEY = st.secrets.get("SERPAPI_KEY", os.getenv("SERPAPI_KEY", "")).strip()
 def _serp_get(params: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any] | None:
     """GET wrapper with backoff. Returns JSON or None."""
     if not SERP_KEY:
+        st.session_state["serp_last_error"] = "Missing SERPAPI_KEY"
         return None
     base = "https://serpapi.com/search.json"
     params = dict(params)
     params["api_key"] = SERP_KEY
+    params["no_cache"] = True  # avoid stale cached responses
     wait = 1.2
     for _ in range(max_retries):
         try:
-            r = requests.get(base, params=params, timeout=20)
+            r = requests.get(base, params=params, timeout=25)
             if r.status_code == 200:
                 return r.json()
             if r.status_code in (401, 403):
                 st.session_state["serp_last_error"] = f"{r.status_code}: unauthorized"
                 return None
             if r.status_code == 429:
-                st.session_state["serp_last_error"] = "429: rate-limit"
+                st.session_state["serp_last_error"] = "429: rate limited"
                 time.sleep(wait); wait *= 1.7; continue
-            st.session_state["serp_last_error"] = f"{r.status_code}: {r.text[:180]}"
+            st.session_state["serp_last_error"] = f"{r.status_code}: {r.text[:200]}"
             time.sleep(wait); wait *= 1.4
         except Exception as e:
             st.session_state["serp_last_error"] = f"Exception: {e}"
@@ -248,13 +219,15 @@ def _serp_get(params: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any] | 
     return None
 
 def serp_iot(keywords: Iterable[str], timeframe: str, geo: str) -> pd.DataFrame | None:
-    """
-    SerpAPI: engine=google_trends, data_type=TIMESERIES
-    """
+    # SerpAPI Trends uses 'date' (NOT 'time')
     kws = ",".join(to_list(keywords)[:5])
     data = _serp_get({
-        "engine":"google_trends","data_type":"TIMESERIES",
-        "q":kws,"hl":"en","time":timeframe,"geo":geo
+        "engine":"google_trends",
+        "data_type":"TIMESERIES",
+        "q":kws,
+        "hl":"en",
+        "date": timeframe,
+        "geo": geo or ""
     })
     if not data:
         return None
@@ -263,92 +236,98 @@ def serp_iot(keywords: Iterable[str], timeframe: str, geo: str) -> pd.DataFrame 
         timeline = iot.get("timeline_data") or []
         if not timeline:
             return None
-        # column names: prefer query names from 'default_ranking' else user-supplied keywords
         names = to_list(iot.get("default_ranking", [])) or to_list(keywords)
-        rows = []
+        rows=[]
         for p in timeline:
             dt = pd.to_datetime(p.get("date"))
             vals = p.get("values", [])
-            series = []
-            for v in vals:
-                if isinstance(v, dict):
-                    series.append(v.get("value", 0))
-                else:
-                    series.append(0)
+            series = [v.get("value", 0) if isinstance(v, dict) else 0 for v in vals]
             rows.append([dt] + series)
-        cols = ["date"] + names[:len(rows[0])-1] if rows and len(rows[0])>1 else ["date"] + to_list(keywords)
+        cols = ["date"] + (names[:len(rows[0])-1] if rows and len(rows[0])>1 else to_list(keywords))
         df = pd.DataFrame(rows, columns=cols)
-        # ensure all requested columns exist
         for kw in to_list(keywords):
             if kw not in df.columns:
                 df[kw] = np.nan
         df = df[["date"] + list(dict.fromkeys(to_list(keywords)))]
+        df.attrs["source"] = "SerpAPI"
+        df.attrs["fetched_at"] = datetime.utcnow().isoformat()
         return df
     except Exception:
         return None
 
-def serp_related(keyword: str, geo: str) -> Dict[str, pd.DataFrame] | None:
-    data = _serp_get({"engine":"google_trends","data_type":"RELATED_QUERIES","q":keyword,"hl":"en","geo":geo})
-    if not data: return None
+def serp_related(keyword: str, geo: str, timeframe: str="today 12-m") -> Dict[str, pd.DataFrame] | None:
+    data = _serp_get({
+        "engine":"google_trends",
+        "data_type":"RELATED_QUERIES",
+        "q":keyword,
+        "hl":"en",
+        "geo":geo or "",
+        "date": timeframe
+    })
+    if not data:
+        return None
     try:
-        rq = data.get("related_queries", {}) or {}
+        rq = data.get("related_queries") or {}
         def _mk(name):
             arr = rq.get(name) or []
-            if not arr: return pd.DataFrame()
+            if not arr: return pd.DataFrame(columns=["query","value"])
             return pd.DataFrame([{"query":x.get("query"), "value":x.get("value")} for x in arr if x.get("query")])
-        return {"top": _mk("top"), "rising": _mk("rising")}
+        out = {"top": _mk("top"), "rising": _mk("rising")}
+        return out
     except Exception:
         return None
 
 def serp_trending_today(geo_country: str="australia") -> pd.DataFrame | None:
     data = _serp_get({"engine":"google_trends_trending_now","hl":"en","geo":geo_country})
-    if not data: return None
+    if not data:
+        return None
     try:
         stories = data.get("stories") or []
-        qs = []
-        for s in stories:
-            q = s.get("title") or s.get("query")
-            if q: qs.append(q)
-        return pd.DataFrame({"query": qs}) if qs else None
+        qs = [s.get("title") or s.get("query") for s in stories if s.get("title") or s.get("query")]
+        df = pd.DataFrame({"query": qs})
+        df.attrs["source"] = "SerpAPI"; df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+        return df if not df.empty else None
     except Exception:
         return None
 
 def serp_trending_realtime(geo_iso2: str="AU", cat: str="all") -> pd.DataFrame | None:
     data = _serp_get({"engine":"google_trends_realtime","hl":"en","geo":geo_iso2,"category":cat})
-    if not data: return None
+    if not data:
+        return None
     try:
         stories = data.get("stories") or []
         rows = [{"title": s.get("title",""), "entityNames": ", ".join(s.get("entityNames",[]) or [])} for s in stories]
-        return pd.DataFrame(rows) if rows else None
+        df = pd.DataFrame(rows)
+        df.attrs["source"] = "SerpAPI"; df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+        return df if not df.empty else None
     except Exception:
         return None
 
-def serp_interest_by_region(keyword: str, geo: str) -> pd.DataFrame | None:
-    data = _serp_get({"engine":"google_trends","data_type":"GEO_MAP","q":keyword,"hl":"en","geo":geo})
-    if not data: return None
+def serp_interest_by_region(keyword: str, geo: str, timeframe: str="today 12-m") -> pd.DataFrame | None:
+    data = _serp_get({
+        "engine":"google_trends",
+        "data_type":"GEO_MAP",
+        "q":keyword,
+        "hl":"en",
+        "geo":geo or "",
+        "date": timeframe
+    })
+    if not data:
+        return None
     try:
         regions = data.get("interest_by_region") or []
-        rows = [{"region":r.get("region"), "value":r.get("value"), "iso2": r.get("geo")} for r in regions if r.get("region")]
-        return pd.DataFrame(rows) if rows else None
+        rows=[{"region":r.get("region"), "value":r.get("value"), "iso2": r.get("geo")} for r in regions if r.get("region")]
+        if not rows:
+            return None
+        df = pd.DataFrame(rows)
+        df.attrs["source"] = "SerpAPI"; df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+        return df
     except Exception:
         return None
 
-def serp_healthcheck() -> dict:
-    """Cheap probe to show why SerpAPI might fail for the user."""
-    if not SERP_KEY:
-        return {"ok": False, "reason": "SERPAPI_KEY not found in secrets or env."}
-    data = _serp_get({
-        "engine":"google_trends","data_type":"TIMESERIES",
-        "q":"AI","hl":"en","time":"now 7-d","geo":""
-    }, max_retries=1)
-    if data:
-        return {"ok": True, "reason": "SerpAPI responded."}
-    return {"ok": False, "reason": st.session_state.get("serp_last_error","No response")}
-
-# ───────────────────────── Source-aware fetch helpers ──────────────────────────
+# ───────────────────────── Fetch helpers (source-aware) ────────────────────────
 def get_source() -> str:
-    # Read-only; the widget sets this key, we do not assign to it after creation.
-    return st.session_state.get("data_source", "Demo")
+    return st.session_state.get("data_source", "SerpAPI")
 
 def fetch_iot(keys, timeframe, geo) -> pd.DataFrame:
     src = get_source()
@@ -359,41 +338,51 @@ def fetch_iot(keys, timeframe, geo) -> pd.DataFrame:
             return df
     if src in ("PyTrends","SerpAPI"):
         try:
-            return pytrends_iot(get_client(), keys, timeframe=timeframe, geo=geo)
+            df = pytrends_iot(get_client(), keys, timeframe=timeframe, geo=geo)
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                df.attrs["source"] = "PyTrends"
+                df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+            return df
         except TooManyRequestsError:
             return pd.DataFrame()
         except Exception:
             return pd.DataFrame()
     return pd.DataFrame()
 
-def fetch_frames(keyword, months, geo, *, resolution="COUNTRY") -> pd.DataFrame:
+def fetch_frames(keyword, months, geo, *, resolution="COUNTRY", timeframe="today 12-m") -> pd.DataFrame:
     src = get_source()
     if src == "SerpAPI":
-        # SerpAPI is snapshot only => synthesize monthly frames for animation
-        snap = serp_interest_by_region(keyword, geo)
+        snap = serp_interest_by_region(keyword, geo, timeframe=timeframe)
         if isinstance(snap, pd.DataFrame) and not snap.empty:
             end = pd.Period(datetime.utcnow().date(), freq="M")
             periods = pd.period_range(end=end, periods=months, freq="M")
-            frames=[]
-            for i,p in enumerate(periods):
+            frames = []
+            for i, p in enumerate(periods):
                 s = snap.copy()
-                s["value"] = (s["value"].astype(float) * (1 + (i - len(periods)/2)*0.01)).clip(lower=0)
+                s["value"] = (pd.to_numeric(s["value"], errors="coerce").fillna(0).astype(float) * (1 + (i - len(periods)/2)*0.01)).clip(lower=0)
                 s["date_frame"] = str(p)
                 frames.append(s)
-            return pd.concat(frames, ignore_index=True)
+            df = pd.concat(frames, ignore_index=True)
+            df.attrs["source"] = "SerpAPI-snap"
+            df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+            return df
     if src in ("PyTrends","SerpAPI"):
         try:
-            return pytrends_monthly_frames(get_client(), keyword=keyword, months=months, geo=geo, resolution=resolution)
+            df = pytrends_monthly_frames(get_client(), keyword=keyword, months=months, geo=geo, resolution=resolution)
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                df.attrs["source"] = "PyTrends"
+                df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+            return df
         except TooManyRequestsError:
             return pd.DataFrame()
         except Exception:
             return pd.DataFrame()
     return pd.DataFrame()
 
-def fetch_related(key, geo) -> Dict[str, pd.DataFrame]:
+def fetch_related(key, geo, timeframe="today 12-m") -> Dict[str, pd.DataFrame]:
     src = get_source()
     if src == "SerpAPI":
-        rq = serp_related(key, geo)
+        rq = serp_related(key, geo, timeframe=timeframe)
         if isinstance(rq, dict):
             return rq
     if src in ("PyTrends","SerpAPI"):
@@ -405,54 +394,105 @@ def fetch_related(key, geo) -> Dict[str, pd.DataFrame]:
             return {}
     return {}
 
+# NEW: hardened trending fetchers (avoid DataFrame boolean coercion)
 def fetch_trending_today(country_slug="australia") -> pd.DataFrame:
     src = get_source()
+
     if src == "SerpAPI":
-        df = serp_trending_today(country_slug)
-        if isinstance(df, pd.DataFrame) and not df.empty:
-            return df
-    if src in ("PyTrends","SerpAPI"):
         try:
-            return pytrends_trending_today(get_client(), geo=country_slug)
+            df = _ensure_df(serp_trending_today(country_slug))
+            if not df.empty:
+                return df
+        except Exception:
+            pass
+
+    if src in ("PyTrends", "SerpAPI"):
+        try:
+            df = _ensure_df(pytrends_trending_today(get_client(), geo=country_slug))
+            if not df.empty:
+                df.attrs["source"] = "PyTrends"
+                df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+            return df
         except Exception:
             return pd.DataFrame()
+
     return pd.DataFrame()
 
 def fetch_trending_realtime(geo_iso2="AU", cat="all") -> pd.DataFrame:
     src = get_source()
+
     if src == "SerpAPI":
-        df = serp_trending_realtime(geo_iso2, cat)
-        if isinstance(df, pd.DataFrame) and not df.empty:
-            return df
-    if src in ("PyTrends","SerpAPI"):
         try:
-            return pytrends_realtime(get_client(), geo=geo_iso2, cat=cat)
+            df = _ensure_df(serp_trending_realtime(geo_iso2, cat))
+            if not df.empty:
+                return df
+        except Exception:
+            pass
+
+    if src in ("PyTrends", "SerpAPI"):
+        try:
+            df = _ensure_df(pytrends_realtime(get_client(), geo=geo_iso2, cat=cat))
+            if not df.empty:
+                df.attrs["source"] = "PyTrends"
+                df.attrs["fetched_at"] = datetime.utcnow().isoformat()
+            return df
         except Exception:
             return pd.DataFrame()
+
     return pd.DataFrame()
 
-# ─────────────────────── Colored time-series helper plot ───────────────────────
-def colored_line(df: pd.DataFrame, series_cols: list[str], title: str | None = None) -> go.Figure:
-    """
-    Custom colored variant of your line_with_spikes. Keeps your original available.
-    """
+# ───────────────────────── Wordcloud safety (sanitize) ─────────────────────────
+def sanitize_related_payload(rq: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+    """Ensure 'value' is numeric int; coerce 'Breakout' => 120, strings => numbers."""
+    def coerce(df: pd.DataFrame) -> pd.DataFrame:
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return pd.DataFrame(columns=["query","value"])
+        out = df.copy()
+        def fix(v):
+            if pd.isna(v): return 0
+            if isinstance(v, (int, float)): return int(v)
+            s = str(v).strip().lower()
+            if s == "breakout": return 120
+            s = s.replace("%","")
+            try:
+                return int(round(float(s)))
+            except Exception:
+                return 0
+        out["value"] = out["value"].apply(fix).astype(int)
+        out["query"] = out["query"].astype(str)
+        return out
+    return {"top": coerce(rq.get("top")), "rising": coerce(rq.get("rising"))}
+
+# ───────────────────── Local colored line_with_spikes helper ───────────────────
+def line_with_spikes_colored(df: pd.DataFrame, series_cols: List[str]) -> go.Figure:
+    """Clean, colored multi-line chart with 'spike' markers on local peaks."""
     fig = go.Figure()
-    palette = qualitative_palette(len(series_cols))
+    palette = px.colors.qualitative.Set2 + px.colors.qualitative.Set1 + px.colors.qualitative.Pastel
+    date = pd.to_datetime(df["date"])
     for i, col in enumerate(series_cols):
+        y = pd.to_numeric(df[col], errors="coerce")
         fig.add_trace(go.Scatter(
-            x=df["date"], y=df[col],
-            mode="lines+markers",
-            name=col,
+            x=date, y=y, mode="lines", name=col,
             line=dict(width=2, color=palette[i % len(palette)]),
-            marker=dict(size=4),
-            hovertemplate="%{y}<extra>"+col+"</extra>"
         ))
-    if title:
-        fig.update_layout(title=title)
-    fig.update_layout(template="plotly_white", margin=dict(l=10,r=10,t=30,b=10), legend=dict(orientation="h", y=1.1))
+        # spikes: simple local maxima
+        if len(y) > 5:
+            peaks = (y.shift(1) < y) & (y.shift(-1) < y)
+            pts = df[peaks.fillna(False)]
+            fig.add_trace(go.Scatter(
+                x=pd.to_datetime(pts["date"]), y=pd.to_numeric(pts[col], errors="coerce"),
+                mode="markers+text", name=f"{col} spikes",
+                marker=dict(size=7, color=palette[i % len(palette)]),
+                text=[f"Spike: {int(v)}" if pd.notna(v) else "" for v in pts[col]],
+                textposition="top center",
+                showlegend=False
+            ))
+    fig.update_layout(template="plotly_white", margin=dict(l=10, r=10, t=10, b=10),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0))
+    fig.update_yaxes(title_text="Interest (0–100)")
     return fig
 
-# ─────────────────────────── Inlined “dd2” EXTRAS ─────────────────────────────
+# ─────────────────────────── Inlined extras (dd2-style) ────────────────────────
 def render_ts_overview_extras(*, st=st, ctx: dict):
     df = ctx.get("ts_df", pd.DataFrame())
     if df is None or df.empty:
@@ -462,20 +502,22 @@ def render_ts_overview_extras(*, st=st, ctx: dict):
         roll[c] = roll[c].rolling(30, min_periods=1).mean()
     fig30 = go.Figure()
     for c in [c for c in roll.columns if c != "date"]:
-        fig30.add_trace(go.Scatter(x=roll["date"], y=roll[c], mode="lines", name=f"{c} (30d)"))
+        fig30.add_trace(go.Scatter(x=pd.to_datetime(roll["date"]), y=roll[c], mode="lines", name=f"{c} (30d)"))
     fig30.update_layout(template="plotly_white", margin=dict(l=10, r=10, t=10, b=10))
     st.subheader("Extra • Rolling 30-day Average")
     st.plotly_chart(fig30, use_container_width=True, key=chart_key("ts_extra_roll30", ctx.get("timeframe"), ctx.get("geo_code")))
     csv = df.to_csv(index=False).encode("utf-8")
     c1, c2 = st.columns([1,1])
     with c1:
-        st.download_button("📥 Download Series (CSV)", data=csv, file_name="interest_over_time.csv", mime="text/csv", use_container_width=True)
+        st.download_button("📥 Download Series (CSV)", data=csv, file_name="interest_over_time.csv",
+                           mime="text/csv", use_container_width=True)
     with c2:
         try:
             png_bytes = fig30.to_image(format="png", scale=2)
-            st.download_button("🖼️ Download 30-day Avg (PNG)", data=png_bytes, file_name="rolling_30d.png", mime="image/png", use_container_width=True)
+            st.download_button("🖼️ Download 30-day Avg (PNG)", data=png_bytes, file_name="rolling_30d.png",
+                               mime="image/png", use_container_width=True)
         except Exception:
-            st.caption("Tip: to enable PNG export, install `pip install -U plotly[kaleido]`.")
+            st.caption("Tip: enable PNG export with `pip install -U plotly[kaleido]`.")
 
 def render_ts_map_extras(*, st=st, ctx: dict):
     frames = ctx.get("frames_df", pd.DataFrame())
@@ -527,76 +569,81 @@ def render_jm_related_extras(*, st=st, ctx: dict):
     render_ts_related_extras(st=st, ctx=ctx)
 
 def render_jm_openings_extras(*, st=st, ctx: dict):
-    # Placeholder to extend safely without scraping
     pass
 
-# ───────────────────────── Sidebar (render ONCE) ───────────────────────────────
-def effective_geo_text(quick: str, custom_text: str) -> str:
-    if quick == "Australia": return "Australia"
-    if quick == "Perth":     return "Perth"
-    if quick == "Worldwide": return "Worldwide"
-    return custom_text or "Australia"
-
-def render_sidebar_once() -> dict:
+# ───────────────────────────── Sidebar (single) ────────────────────────────────
+def render_sidebar_once() -> Dict[str, Any]:
     """
-    Builds the sidebar ONCE. Returns a dict with all controls used by views.
-    • We DO NOT assign to widget-backed st.session_state keys after creation.
-    • No duplicate keys across multiple sidebars.
+    Single sidebar for the whole app:
+    - Choose view
+    - Data source + Require live
+    - Region quick pick (mutually exclusive) + optional custom
+    - Timeframe controls shown only for the active view
+    - Diagnostics
     """
     with st.sidebar:
-        st.markdown("### 🔧 Controls")
+        st.header("🛠️ Controls")
         view = st.selectbox("Choose view", ["Trends Studio", "Job Market"], key="view_pick")
 
-        # Data source picker (read-only for code; we won't override it)
-        data_source = st.radio("Data source", ["SerpAPI", "PyTrends", "Demo"], horizontal=True, key="data_source")
+        st.markdown("**Data source**")
+        data_source = st.radio("", ["SerpAPI", "PyTrends", "Demo"], horizontal=True, key="data_source")
+        serp_loaded = bool(SERP_KEY)
         if data_source == "SerpAPI":
-            if SERP_KEY:
-                st.markdown("<span class='pill'>SerpAPI key loaded</span>", unsafe_allow_html=True)
+            if serp_loaded:
+                st.button("SerpAPI key loaded", type="secondary", disabled=True)
             else:
-                st.markdown("<div class='bad'>No SERPAPI_KEY found in secrets or env.<br/>Select PyTrends or Demo.</div>", unsafe_allow_html=True)
+                st.markdown("<div class='warn'>No SERPAPI_KEY found in secrets/env.</div>", unsafe_allow_html=True)
 
-        st.markdown("#### Region quick pick")
-        quick = st.radio("Region", ["Australia","Perth","Worldwide","Custom"], horizontal=False, key="quick_region")
-        # We do NOT force the text field to change; we just ignore it unless 'Custom'
-        geo_text = st.text_input(
-            "Custom region (country, ISO-2, 'Perth', or 'Worldwide')",
-            value=st.session_state.get("custom_geo_text","Australia"),
-            key="custom_geo_text",
-            disabled=(quick != "Custom")
-        )
+        # Require-live: disabled in Demo mode (makes no sense there)
+        require_live_default = st.session_state.get("require_live", True)
+        require_live = st.checkbox("Require live (no demo fallback)", value=require_live_default,
+                                   key="require_live_chk", disabled=(data_source=="Demo"))
+        st.session_state["require_live"] = require_live
 
-        st.markdown("#### Timeframes")
-        ts_timeframe = st.selectbox("Trends Studio timeframe", ["today 12-m","today 3-m","now 7-d","today 5-y"], index=0, key="ts_timeframe")
-        jm_timeframe = st.selectbox("Job Market timeframe", ["now 7-d","today 3-m","today 12-m","today 5-y"], index=2, key="jm_timeframe")
+        # Region quick pick
+        st.markdown("**Region quick pick**")
+        is_demo = data_source == "Demo"
+        q = st.radio("Region", ["Australia", "Perth", "Worldwide", "Custom"], index=0,
+                     key="quick_region", disabled=is_demo)
+        if q == "Custom":
+            geo_text = st.text_input("Custom region (country, ISO-2, 'Perth', or 'Worldwide')",
+                                     value="Australia", key="geo_text_custom", disabled=is_demo)
+        else:
+            geo_text = q
 
-        st.markdown("#### Animated Map frames")
-        ts_months = st.slider("Trends Studio months", 3, 12, 7, key="ts_months")
-        jm_months = st.slider("Job Market months", 3, 12, 6, key="jm_months")
+        # Timeframes (only the active view shows its controls)
+        st.markdown("**Timeframes**")
+        if view == "Trends Studio":
+            ts_timeframe = st.selectbox("Trends Studio timeframe",
+                                        ["today 12-m","today 3-m","now 7-d","today 5-y"],
+                                        index=0, key="ts_timeframe", disabled=is_demo)
+            ts_months = st.slider("Animated Map – months", 3, 12, 7, key="ts_months", disabled=is_demo)
+            jm_timeframe, jm_months = None, None
+        else:
+            jm_timeframe = st.selectbox("Job Market timeframe",
+                                        ["now 7-d","today 3-m","today 12-m","today 5-y"],
+                                        index=2, key="jm_timeframe", disabled=is_demo)
+            jm_months = st.slider("Animated Map – months", 3, 12, 6, key="jm_months", disabled=is_demo)
+            ts_timeframe, ts_months = None, None
 
-        # Diagnostics
-        with st.expander("🔍 Data source diagnostics"):
-            st.write("Selected source:", data_source)
-            if data_source == "SerpAPI":
-                hc = serp_healthcheck()
-                if hc["ok"]:
-                    st.markdown("<div class='ok'>SerpAPI OK.</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<div class='warn'>SerpAPI problem: {hc['reason']}</div>", unsafe_allow_html=True)
-            st.write("Tip: PyTrends can rate-limit; if so, try SerpAPI or Demo temporarily.")
+        st.markdown("<hr class='sep'/>", unsafe_allow_html=True)
+        st.markdown("**Diagnostics**")
+        st.caption(f"Source: {data_source} · Require live: {st.session_state.get('require_live')}")
+        if 'serp_last_error' in st.session_state and data_source == "SerpAPI":
+            st.markdown(f"<div class='err'>SerpAPI: {st.session_state['serp_last_error']}</div>", unsafe_allow_html=True)
 
-        return dict(
-            view=view,
-            data_source=data_source,
-            quick=quick,
-            geo_text=geo_text,
-            ts_timeframe=ts_timeframe,
-            jm_timeframe=jm_timeframe,
-            ts_months=ts_months,
-            jm_months=jm_months,
-        )
+        return {
+            "view": view,
+            "data_source": data_source,
+            "geo_text": geo_text,
+            "ts_timeframe": ts_timeframe,
+            "ts_months": ts_months,
+            "jm_timeframe": jm_timeframe,
+            "jm_months": jm_months,
+        }
 
 # ─────────────────────────────── Views (UI) ────────────────────────────────────
-def render_trends_studio(ctrl: dict):
+def render_trends_studio(ctrl: Dict[str, Any]):
     if ctrl["view"] != "Trends Studio":
         return
 
@@ -610,25 +657,15 @@ def render_trends_studio(ctrl: dict):
         unsafe_allow_html=True,
     )
 
-    # Keyword entry + Apply
-    default_kw = st.session_state.get("applied_keywords", "AI, Data")
-    kw_text = st.text_input("Keywords (comma-separated, max 5)", default_kw, key="ts_kw")
-    colA, colB = st.columns([1,1])
-    with colA:
-        if st.button("Apply Keywords", key="btn_apply_kw"):
-            st.session_state["applied_keywords"] = kw_text
-            st.toast("Keywords applied. Click fetch buttons in sections to get live data.", icon="✅")
-    with colB:
-        st.caption("Applied: " + (st.session_state.get("applied_keywords","AI, Data")))
+    # Inputs
+    kw_text = st.text_input("Keywords (comma-separated, max 5)", "AI, Data", key="ts_kw")
+    keywords = [x.strip() for x in kw_text.split(",") if x.strip()][:5] or ["AI"]
+    geo_code, scope_label, city_filter = resolve_geo(ctrl["geo_text"])
 
-    keywords = [x.strip() for x in st.session_state.get("applied_keywords", kw_text).split(",") if x.strip()][:5] or ["AI"]
-    eff_geo_text = effective_geo_text(ctrl["quick"], ctrl["geo_text"])
-    geo_code, scope_label, city_filter = resolve_geo(eff_geo_text)
-
-    # ── Trending section ───────────────────────────────────────────────────────
+    # ── Trending (on demand) ───────────────────────────────────────────────────
     st.markdown(f'<div class="section"><div class="section-h"><h2>🔥 Top Trending Searches Today</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
-    btn_trend = st.button("Fetch Trending (Daily + Realtime)", key="btn_ts_trending", use_container_width=True)
-
+    btn_trend = st.button("Fetch Trending (Daily + Realtime)", key="btn_ts_trending", use_container_width=True,
+                          disabled=(get_source()=="Demo" and st.session_state.get("require_live", True)))
     if btn_trend:
         st.session_state["trend_daily"] = fetch_trending_today("australia")
         st.session_state["trend_rt"] = fetch_trending_realtime("AU","all")
@@ -637,12 +674,12 @@ def render_trends_studio(ctrl: dict):
     with c1:
         st.caption("Daily Trending — Australia")
         daily = st.session_state.get("trend_daily")
-        items = (
-            daily["query"].astype(str).tolist()[:10]
-            if (isinstance(daily, pd.DataFrame) and not daily.empty and "query" in daily.columns)
-            else ["AFL finals","Fuel prices","Weather radar","Bitcoin price"]
-        )
+        if isinstance(daily, pd.DataFrame) and not daily.empty:
+            items = daily["query"].astype(str).tolist()[:10]
+        else:
+            items = ["AFL finals","Fuel prices","Weather radar","Bitcoin price"]
         st.markdown("\n".join([f"- {q}" for q in items]))
+        badge_live(daily)
     with c2:
         city_name = city_filter or "Perth"
         st.caption(f"Realtime Trending — filtered for “{city_name}”")
@@ -659,91 +696,124 @@ def render_trends_studio(ctrl: dict):
         if not titles:
             titles = [f"{city_name} weather update", f"{city_name} traffic", f"{city_name} events", "Local sports news"]
         st.markdown("\n".join([f"- **{t}**" for t in titles]))
+        badge_live(rt)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Interest Over Time ─────────────────────────────────────────────────────
-    st.markdown(f'<div class="section"><div class="section-h"><h2>📈 Interest Over Time</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
-    col1, col2 = st.columns([1,3])
-    with col1:
-        btn_ts = st.button("⚡ Fetch Time Series (Live)", key="btn_ts_iot", use_container_width=True)
-        st.caption("Powered by: " + get_source())
-    with col2:
-        st.caption(f"Timeframe: **{ctrl['ts_timeframe']}** • Geo: **{eff_geo_text}**")
-
-    if btn_ts:
+    st.markdown(f'<div class="section"><div class="section-h"><h2>📈 Interest Over Time (annotated)</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
+    apply_ts = st.button("⚡ Apply Keywords (Live)", key="btn_ts_apply", use_container_width=True,
+                         disabled=(get_source()=="Demo" and st.session_state.get("require_live", True)))
+    if apply_ts:
         st.session_state["ts_iot"] = fetch_iot(tuple(keywords), ctrl["ts_timeframe"], geo_code)
 
     df_live = st.session_state.get("ts_iot", pd.DataFrame())
-    df_overview = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(keywords[:2]))
-    series_cols = [c for c in df_overview.columns if c != "date"]
+    require_live = st.session_state.get("require_live", True)
 
-    k1,k2,k3 = st.columns([0.9, 2.2, 1.1])
-    with k1:
-        now_vals = [int(df_overview[c].iloc[-1]) for c in series_cols]
-        avg_vals = [int(df_overview[c].rolling(7, min_periods=1).mean().iloc[-1]) for c in series_cols]
-        label_now = "NOW (LIVE)" if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else "NOW (DEMO)"
-        st.markdown(kpi_card(label_now, f"{now_vals[0]}"), unsafe_allow_html=True)
-        st.markdown(kpi_card("7-DAY AVG", f"{avg_vals[0]}"), unsafe_allow_html=True)
-    with k2:
-        # colored variant, as requested
-        st.plotly_chart(
-            colored_line(df_overview, series_cols, title=None),
-            use_container_width=True,
-            key=chart_key("ts_overview_colored", ctrl["ts_timeframe"], geo_code, tuple(series_cols), btn_ts),
-        )
-    with k3:
-        st.write("**Sparklines**")
-        for k in series_cols:
-            st.caption(k)
+    if isinstance(df_live, pd.DataFrame) and not df_live.empty:
+        df_overview = df_live
+        badge_live(df_live)
+    else:
+        if require_live:
+            st.error("Live data required but unavailable. Check rate-limits/auth (see Diagnostics).")
+            df_overview = pd.DataFrame({"date":[]})
+        else:
+            st.info("Live data unavailable · showing demo")
+            df_overview = demo_ts(tuple(keywords[:2]))
+
+    series_cols = [c for c in df_overview.columns if c != "date"]
+    if series_cols:
+        k1,k2,k3 = st.columns([0.9, 2.2, 1.1])
+        with k1:
+            now_vals = [int(pd.to_numeric(df_overview[c], errors="coerce").fillna(0).iloc[-1]) for c in series_cols]
+            avg_vals = [int(pd.to_numeric(df_overview[c], errors="coerce").rolling(7, min_periods=1).mean().fillna(0).iloc[-1]) for c in series_cols]
+            label_now = "NOW (LIVE)" if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else "NOW (DEMO)"
+            st.markdown(kpi_card(label_now, f"{now_vals[0]}"), unsafe_allow_html=True)
+            st.markdown(kpi_card("7-DAY AVG", f"{avg_vals[0]}"), unsafe_allow_html=True)
+        with k2:
             st.plotly_chart(
-                sparkline(df_overview, k),
+                line_with_spikes_colored(df_overview, series_cols),
                 use_container_width=True,
-                theme=None,
-                key=chart_key("ts_spark", k, ctrl["ts_timeframe"], geo_code, btn_ts),
+                key=chart_key("ts_overview", ctrl["ts_timeframe"], geo_code, tuple(series_cols), apply_ts),
             )
+        with k3:
+            st.write("**Sparklines**")
+            for k in series_cols:
+                st.caption(k)
+                st.plotly_chart(
+                    sparkline(df_overview, k),
+                    use_container_width=True,
+                    theme=None,
+                    key=chart_key("ts_spark", k, ctrl["ts_timeframe"], geo_code, apply_ts),
+                )
+    else:
+        st.warning("No data to chart. Try a broader timeframe or Worldwide.")
 
     render_ts_overview_extras(st=st, ctx=dict(timeframe=ctrl["ts_timeframe"], geo_code=geo_code, ts_df=df_overview))
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Animated Map ───────────────────────────────────────────────────────────
     st.markdown(f'<div class="section"><div class="section-h"><h2>🗺️ Animated Map — Interest by Region</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
-    btn_map = st.button("Fetch Regions / Map", key="btn_ts_map", use_container_width=True)
-    if btn_map:
-        frames_live = fetch_frames(keywords[0], ctrl["ts_months"], geo_code, resolution=("CITY" if city_filter else "COUNTRY"))
+
+    # let user pick which series to map
+    series_cols = [c for c in df_overview.columns if c != "date"]
+    map_series = st.selectbox("Series to map", series_cols or ["(none)"], index=0 if series_cols else 0,
+                              key="ts_map_series", disabled=(not series_cols))
+    btn_map = st.button("Fetch Regions / Map", key="btn_ts_map", use_container_width=True,
+                        disabled=(not series_cols) or (get_source()=="Demo" and require_live))
+    if btn_map and series_cols:
+        frames_live = fetch_frames(map_series, ctrl["ts_months"], geo_code,
+                                   resolution=("CITY" if city_filter else "COUNTRY"),
+                                   timeframe=ctrl["ts_timeframe"])
         st.session_state["ts_frames"] = frames_live
 
     frames_show = st.session_state.get("ts_frames", pd.DataFrame())
-    if frames_show is None or frames_show.empty:
-        st.caption("Regional map: live data not available, showing demo frames.")
-        frames_show = demo_frames(keywords[0], ctrl["ts_months"])
-    if isinstance(frames_show, pd.DataFrame) and city_filter:
-        mask = frames_show["region"].astype(str).str.contains(city_filter, case=False, na=False)
-        frames_show = frames_show[mask]
-    st.plotly_chart(
-        animated_choropleth(frames_show),
-        use_container_width=True,
-        key=chart_key("ts_map", keywords[0], ctrl["ts_months"], geo_code, ("CITY" if city_filter else "COUNTRY"), btn_map),
-    )
+    if isinstance(frames_show, pd.DataFrame) and not frames_show.empty:
+        if city_filter and "region" in frames_show.columns:
+            mask = frames_show["region"].astype(str).str.contains(city_filter, case=False, na=False)
+            frames_show = frames_show[mask]
+        st.plotly_chart(
+            animated_choropleth(frames_show),
+            use_container_width=True,
+            key=chart_key("ts_map", map_series, ctrl["ts_months"], geo_code, ("CITY" if city_filter else "COUNTRY"), btn_map),
+        )
+        badge_live(frames_show)
+        st.download_button("⬇️ Download Top Regions (CSV)", frames_show.to_csv(index=False).encode("utf-8"),
+                           "regions_all_frames.csv", "text/csv")
+    else:
+        if require_live:
+            st.error("Live regions required but unavailable.")
+        else:
+            st.caption("Regional map: live data not available, showing demo frames.")
+            demo = demo_frames(map_series or (keywords[0] if keywords else "AI"), ctrl["ts_months"])
+            st.plotly_chart(animated_choropleth(demo), use_container_width=True)
     render_ts_map_extras(st=st, ctx=dict(frames_df=frames_show, timeframe=ctrl["ts_timeframe"], geo_code=geo_code))
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Related Queries / Word cloud ───────────────────────────────────────────
     st.markdown(f'<div class="section"><div class="section-h"><h2>🔤 Related Queries — Word Cloud</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
-    btn_rel = st.button("Fetch Related Queries", key="btn_ts_related", use_container_width=True)
-    if btn_rel:
-        st.session_state["ts_related"] = fetch_related(keywords[0], geo_code)
+    btn_rel = st.button("Fetch Related Queries", key="btn_ts_related", use_container_width=True,
+                        disabled=(get_source()=="Demo" and require_live))
+    if btn_rel and keywords:
+        raw = fetch_related(keywords[0], geo_code, timeframe=ctrl["ts_timeframe"])
+        st.session_state["ts_related"] = sanitize_related_payload(raw) if raw else {}
 
     rq = st.session_state.get("ts_related", {})
-    if not rq:
-        st.caption("Related queries: live data not available, showing demo.")
-        rq = demo_related()
-    img = wordcloud_from_related(rq.get("top"), rq.get("rising"))
-    src = "Live" if isinstance(st.session_state.get("ts_iot"), pd.DataFrame) and not st.session_state["ts_iot"].empty else "Demo"
-    st.image(img, caption=f"Related queries — {keywords[0]} ({src})", use_container_width=True)
-    render_ts_related_extras(st=st, ctx=dict(rq_dict=rq, timeframe=ctrl["ts_timeframe"], geo_code=geo_code))
+    if isinstance(rq, dict) and rq:
+        img = wordcloud_from_related(rq.get("top"), rq.get("rising"))
+        st.image(img, caption=f"Related queries — {keywords[0]} (Live)", use_container_width=True)
+        render_ts_related_extras(st=st, ctx=dict(rq_dict=rq, timeframe=ctrl["ts_timeframe"], geo_code=geo_code))
+    else:
+        if require_live:
+            st.error("Live related queries required but unavailable.")
+        else:
+            st.caption("Related queries: live data not available, showing demo.")
+            demo = demo_related()
+            img = wordcloud_from_related(demo["top"], demo["rising"])
+            st.image(img, caption=f"Related queries — {keywords[0]} (Demo)", use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-def render_job_market(ctrl: dict):
+
+def render_job_market(ctrl: Dict[str, Any]):
     if ctrl["view"] != "Job Market":
         return
 
@@ -757,73 +827,76 @@ def render_job_market(ctrl: dict):
         unsafe_allow_html=True,
     )
 
-    # Roles entry + Apply
-    default_roles = st.session_state.get("applied_roles", ["Data Analyst","Data Scientist"])
-    all_roles = [
+    job_roles = [
         "Data Analyst", "Data Scientist", "Software Developer",
         "Full Stack Developer", "Data Engineer",
         "Business Analyst", "Machine Learning Engineer",
     ]
-    roles = st.multiselect("Job Roles (max 5)", all_roles, default=default_roles, key="jm_roles")[:5] or all_roles[:2]
-    colA, colB = st.columns([1,1])
-    with colA:
-        if st.button("Apply Roles", key="btn_apply_roles"):
-            st.session_state["applied_roles"] = roles
-            st.toast("Roles applied. Click fetch buttons in sections to get live data.", icon="✅")
-    with colB:
-        st.caption("Applied: " + ", ".join(st.session_state.get("applied_roles", roles)))
-
-    eff_roles = st.session_state.get("applied_roles", roles)
-    eff_geo_text = effective_geo_text(ctrl["quick"], ctrl["geo_text"])
-    geo_code, scope_label, city_filter = resolve_geo(eff_geo_text)
+    roles = st.multiselect("Job Roles (max 5)", job_roles, default=job_roles[:2], key="jm_roles")[:5] or job_roles[:2]
+    geo_code, scope_label, city_filter = resolve_geo(ctrl["geo_text"])
 
     tabs = st.tabs(["Overview","Trends by Date","Regional Map","Top & Rising","Job Openings"])
 
     # Overview
     with tabs[0]:
-        st.markdown(f'<div class="section"><div class="section-h"><h2>Interest Over Time</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
-        col1, col2 = st.columns([1,3])
-        with col1:
-            btn = st.button("⚡ Fetch Job Role Time Series", key="btn_jm_iot", use_container_width=True)
-            st.caption("Powered by: " + get_source())
-        with col2:
-            st.caption(f"Timeframe: **{ctrl['jm_timeframe']}** • Geo: **{eff_geo_text}**")
-
+        st.markdown(f'<div class="section"><div class="section-h"><h2>Interest Over Time (annotated)</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
+        btn = st.button("⚡ Apply Roles (Live)", key="btn_jm_apply", use_container_width=True,
+                        disabled=(get_source()=="Demo" and st.session_state.get("require_live", True)))
         if btn:
-            st.session_state["jm_iot"] = fetch_iot(tuple(eff_roles), ctrl["jm_timeframe"], geo_code)
+            st.session_state["jm_iot"] = fetch_iot(tuple(roles), ctrl["jm_timeframe"], geo_code)
 
         df_live = st.session_state.get("jm_iot", pd.DataFrame())
-        df = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(eff_roles[:2]))
+        require_live = st.session_state.get("require_live", True)
+
+        if isinstance(df_live, pd.DataFrame) and not df_live.empty:
+            df = df_live
+            badge_live(df_live)
+        else:
+            if require_live:
+                st.error("Live data required but unavailable.")
+                df = pd.DataFrame({"date":[]})
+            else:
+                st.info("Live data unavailable · showing demo.")
+                df = demo_ts(tuple(roles[:2]))
 
         cols = [c for c in df.columns if c != "date"]
-        first = cols[0]
-        now_val = int(df[first].iloc[-1]); avg7 = int(df[first].rolling(7, min_periods=1).mean().iloc[-1])
-        k1,k2,k3 = st.columns(3)
-        with k1: st.markdown(kpi_card("Now", f"{now_val}"), unsafe_allow_html=True)
-        with k2: st.markdown(kpi_card("7-day Avg", f"{avg7}"), unsafe_allow_html=True)
-        with k3: st.markdown(f"<span class='chip'>Timeframe: {ctrl['jm_timeframe']}</span>", unsafe_allow_html=True)
-
-        st.plotly_chart(
-            colored_line(df, cols, title=None),
-            use_container_width=True,
-            key=chart_key("jm_overview_colored", ctrl["jm_timeframe"], geo_code, tuple(cols), btn),
-        )
-        st.caption("Tip: switch to *Trends Studio* to deep-dive these roles as keywords.")
-        render_jm_overview_extras(st=st, ctx=dict(ts_df=df, timeframe=ctrl["jm_timeframe"], geo_code=geo_code))
+        if cols:
+            first = cols[0]
+            now_val = int(pd.to_numeric(df[first], errors="coerce").fillna(0).iloc[-1]) if not df.empty else 0
+            avg7 = int(pd.to_numeric(df[first], errors="coerce").rolling(7, min_periods=1).mean().fillna(0).iloc[-1]) if not df.empty else 0
+            k1,k2,k3 = st.columns(3)
+            with k1: st.markdown(kpi_card("Now", f"{now_val}"), unsafe_allow_html=True)
+            with k2: st.markdown(kpi_card("7-day Avg", f"{avg7}"), unsafe_allow_html=True)
+            with k3: st.markdown(f"<span class='chip'>Timeframe: {ctrl['jm_timeframe']}</span>", unsafe_allow_html=True)
+            st.plotly_chart(
+                line_with_spikes_colored(df, cols),
+                use_container_width=True,
+                key=chart_key("jm_overview", ctrl["jm_timeframe"], geo_code, tuple(cols), btn),
+            )
+            st.caption("Tip: switch to *Trends Studio* to deep-dive these roles as keywords.")
+            render_jm_overview_extras(st=st, ctx=dict(ts_df=df, timeframe=ctrl["jm_timeframe"], geo_code=geo_code))
+        else:
+            st.warning("No data to chart.")
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Trends by Date
     with tabs[1]:
         st.markdown(f'<div class="section"><div class="section-h"><h2>Trends by Date</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
-        df_live = st.session_state.get("jm_iot", pd.DataFrame())
-        df = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(eff_roles[:2]))
+        df = st.session_state.get("jm_iot", pd.DataFrame())
+        if (not isinstance(df, pd.DataFrame)) or df.empty:
+            if st.session_state.get("require_live", True):
+                st.error("Live series required but unavailable.")
+                df = pd.DataFrame({"date":[]})
+            else:
+                st.caption("Live series not available; using demo.")
+                df = demo_ts(tuple(roles[:2]))
         all_series = [c for c in df.columns if c != "date"]
         pick = st.multiselect("Series to show", all_series, default=all_series[:min(3,len(all_series))], key="jm_pick")
         if pick:
             st.plotly_chart(
-                colored_line(df[["date"] + pick], pick, title=None),
+                line_with_spikes_colored(df[["date"] + pick], pick),
                 use_container_width=True,
-                key=chart_key("jm_trends_by_date_colored", ctrl["jm_timeframe"], geo_code, tuple(pick)),
+                key=chart_key("jm_trends_by_date", ctrl["jm_timeframe"], geo_code, tuple(pick)),
             )
         else:
             st.warning("Select at least one series.")
@@ -832,52 +905,70 @@ def render_job_market(ctrl: dict):
     # Regional Map
     with tabs[2]:
         st.markdown(f'<div class="section"><div class="section-h"><h2>Interest by Region (animated)</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
-        btn_map = st.button("Fetch Regions / Map (first role)", key="btn_jm_map", use_container_width=True)
+        map_series = st.selectbox("Series to map", roles, index=0, key="jm_map_series")
+        btn_map = st.button("Fetch Regions / Map", key="btn_jm_map", use_container_width=True,
+                            disabled=(get_source()=="Demo" and st.session_state.get("require_live", True)))
         if btn_map:
-            frames_live = fetch_frames(eff_roles[0], ctrl["jm_months"], geo_code, resolution=("CITY" if city_filter else "COUNTRY"))
+            frames_live = fetch_frames(map_series, ctrl["jm_months"], geo_code,
+                                       resolution=("CITY" if city_filter else "COUNTRY"),
+                                       timeframe=ctrl["jm_timeframe"])
             st.session_state["jm_frames"] = frames_live
 
         frames = st.session_state.get("jm_frames", pd.DataFrame())
-        if frames is None or frames.empty:
-            st.caption("Regional map: live data not available, showing demo frames.")
-            frames = demo_frames(eff_roles[0], ctrl["jm_months"])
-        if isinstance(frames, pd.DataFrame) and city_filter:
-            mask = frames["region"].astype(str).str.contains(city_filter, case=False, na=False)
-            frames = frames[mask]
-        st.plotly_chart(
-            animated_choropleth(frames),
-            use_container_width=True,
-            key=chart_key("jm_map", eff_roles[0], ctrl["jm_months"], geo_code, ("CITY" if city_filter else "COUNTRY"), btn_map),
-        )
-        st.caption(("Showing regions for: **" + eff_roles[0] + "**") + (f" • City: **{city_filter}**" if city_filter else ""))
-        render_jm_map_extras(st=st, ctx=dict(frames_df=frames, timeframe=ctrl["jm_timeframe"], geo_code=geo_code))
+        if isinstance(frames, pd.DataFrame) and not frames.empty:
+            if city_filter and "region" in frames.columns:
+                frames = frames[frames["region"].astype(str).str.contains(city_filter, case=False, na=False)]
+            st.plotly_chart(
+                animated_choropleth(frames),
+                use_container_width=True,
+                key=chart_key("jm_map", map_series, ctrl["jm_months"], geo_code, ("CITY" if city_filter else "COUNTRY"), btn_map),
+            )
+            badge_live(frames)
+            st.caption(("Showing regions for: **" + map_series + "**") + (f" • City: **{city_filter}**" if city_filter else ""))
+            st.download_button("⬇️ Download Top Regions (CSV)", frames.to_csv(index=False).encode("utf-8"),
+                               "job_regions_all_frames.csv", "text/csv")
+            render_jm_map_extras(st=st, ctx=dict(frames_df=frames, timeframe=ctrl["jm_timeframe"], geo_code=geo_code))
+        else:
+            if st.session_state.get("require_live", True):
+                st.error("Live regions required but unavailable.")
+            else:
+                st.caption("Regional map: live data not available, showing demo frames.")
+                demo = demo_frames(map_series, ctrl["jm_months"])
+                st.plotly_chart(animated_choropleth(demo), use_container_width=True)
 
     # Top & Rising
     with tabs[3]:
         st.markdown(f'<div class="section"><div class="section-h"><h2>Top & Rising Related Keywords</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
-        btn_rel = st.button("Fetch Related (first role)", key="btn_jm_related", use_container_width=True)
+        btn_rel = st.button("Fetch Related (first role)", key="btn_jm_related", use_container_width=True,
+                            disabled=(get_source()=="Demo" and st.session_state.get("require_live", True)))
         if btn_rel:
-            st.session_state["jm_related"] = fetch_related(eff_roles[0], geo_code)
+            raw = fetch_related(roles[0], geo_code, timeframe=ctrl["jm_timeframe"])
+            st.session_state["jm_related"] = sanitize_related_payload(raw) if raw else {}
         rq = st.session_state.get("jm_related", {})
-        if not rq:
-            st.caption("Related queries: live data not available, showing demo.")
-            rq = demo_related()
-        top_df  = rq.get("top") if isinstance(rq, dict) else None
-        rising_df = rq.get("rising") if isinstance(rq, dict) else None
-        c1,c2 = st.columns(2)
-        with c1:
-            st.write("### Top Keywords")
-            if isinstance(top_df, pd.DataFrame) and not top_df.empty:
-                st.dataframe(top_df, use_container_width=True, height=360, key="jm_top_df")
+        if rq:
+            top_df  = rq.get("top")
+            rising_df = rq.get("rising")
+            c1,c2 = st.columns(2)
+            with c1:
+                st.write("### Top Keywords")
+                if isinstance(top_df, pd.DataFrame) and not top_df.empty:
+                    st.dataframe(top_df, use_container_width=True, height=360, key="jm_top_df")
+                else:
+                    st.warning("No Top keywords fetched.")
+            with c2:
+                st.write("### Rising Keywords")
+                if isinstance(rising_df, pd.DataFrame) and not rising_df.empty:
+                    st.dataframe(rising_df, use_container_width=True, height=360, key="jm_rising_df")
+                else:
+                    st.warning("No Rising keywords fetched.")
+            render_jm_related_extras(st=st, ctx=dict(rq_dict=rq, timeframe=ctrl["jm_timeframe"], geo_code=geo_code))
+        else:
+            if st.session_state.get("require_live", True):
+                st.error("Live related queries required but unavailable.")
             else:
-                st.warning("No Top keywords fetched.")
-        with c2:
-            st.write("### Rising Keywords")
-            if isinstance(rising_df, pd.DataFrame) and not rising_df.empty:
-                st.dataframe(rising_df, use_container_width=True, height=360, key="jm_rising_df")
-            else:
-                st.warning("No Rising keywords fetched.")
-        render_jm_related_extras(st=st, ctx=dict(rq_dict=rq, timeframe=ctrl["jm_timeframe"], geo_code=geo_code))
+                st.caption("Related queries: live data not available, showing demo.")
+                demo = demo_related()
+                st.dataframe(demo["top"], use_container_width=True, height=300)
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Job Openings
@@ -886,7 +977,7 @@ def render_job_market(ctrl: dict):
         loc_input = st.text_input("Job search location (optional — used to prefill external links)",
                                   value=(city_filter or scope_label.replace("Worldwide","")), key="jm_job_loc")
         loc_q = quote(loc_input) if loc_input else ""
-        for role in eff_roles:
+        for role in roles:
             role_q = quote(role)
             lkdn = f"https://www.linkedin.com/jobs/search/?keywords={role_q}" + (f"&location={loc_q}" if loc_q else "")
             indeed = f"https://www.indeed.com/jobs?q={role_q}" + (f"&l={loc_q}" if loc_q else "")
@@ -897,11 +988,21 @@ def render_job_market(ctrl: dict):
 
 # ─────────────────────────── Render whichever view ─────────────────────────────
 def main():
-    # Build sidebar ONCE
     ctrl = render_sidebar_once()
-    # Render both views; each returns early if not selected
-    render_trends_studio(ctrl)
-    render_job_market(ctrl)
+
+    # IMPORTANT: Do NOT mirror the radio value back into session_state["data_source"]
+    # (that causes: cannot be modified after widget is instantiated)
+
+    # Explicit guard: 'Demo' + 'Require live' ON => don't fetch/live buttons disabled
+    if ctrl["data_source"] == "Demo" and st.session_state.get("require_live", True):
+        st.warning("Demo selected while 'Require live' is ON — disable the checkbox or switch source to fetch live.")
+        st.caption("© 2025 · Trends Hub · Built with Streamlit · PyTrends · SerpAPI")
+        return
+
+    if ctrl["view"] == "Trends Studio":
+        render_trends_studio(ctrl) 
+    else:
+        render_job_market(ctrl)
     st.caption("© 2025 · Trends Hub · Built with Streamlit · PyTrends · SerpAPI")
 
 if __name__ == "__main__":
