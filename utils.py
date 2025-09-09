@@ -33,3 +33,5 @@ def add_iso_codes(df: pd.DataFrame, country_col: str = "region") -> pd.DataFrame
     df["iso2"] = df[country_col].apply(country_name_to_iso2)
     df["iso3"] = df["iso2"].apply(lambda x: iso2_to_iso3(x) if isinstance(x, str) else None)
     return df
+
+    

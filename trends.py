@@ -10,26 +10,54 @@ from pytrends.exceptions import TooManyRequestsError
 # Gentle throttle so Google doesn’t 429 you.
 BASE_SLEEP_SEC = 5.0
 JITTER_SEC = 2.0
+_session: TrendReq | None = None
+
 def _sleep():
     time.sleep(BASE_SLEEP_SEC + random.uniform(0, JITTER_SEC))
 
-def get_client(hl="en-US", tz=0):
-    """No internal retries; we handle it here. Add realistic UA."""
-    return TrendReq(
+# Optional proxy pool (leave empty if you don’t use proxies)
+USE_PROXIES = False
+PROXIES = []  # e.g. ["http://user:pass@host:port", "http://host:port"]
+
+def _pick_proxy():
+    if USE_PROXIES and PROXIES:
+        return {"https": random.choice(PROXIES), "http": random.choice(PROXIES)}
+    return {}
+
+def get_client(hl="en-US", tz=0) -> TrendReq:
+    """Create or reuse a single TrendReq session with realistic headers/cookies."""
+    global _session
+    if _session is not None:
+        return _session
+
+    cookies = {"CONSENT": "YES+"}  # avoid consent walls
+
+    _session = TrendReq(
         hl=hl,
         tz=tz,
+        timeout=(10, 30),            # (connect, read) — IMPORTANT: not inside requests_args
         retries=0,
         backoff_factor=0,
+        proxies=_pick_proxy() or {}, # never None (avoids len(None) error inside pytrends)
         requests_args={
             "headers": {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
                 "User-Agent": (
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                )
-            }
+                    "Chrome/126.0.0.0 Safari/537.36"
+                ),
+            },
+            "cookies": cookies,
+            # DO NOT pass 'timeout' here — it belongs to TrendReq(...)
         },
     )
+    return _session
 
 def _build(pytrends, keywords, timeframe, geo):
     pytrends.build_payload(keywords, timeframe=timeframe, geo=geo)
@@ -71,11 +99,11 @@ def monthly_region_frames(pytrends, keyword, months=6, geo="", resolution="COUNT
         timeframe = f"{start} {end}"
         _build(pytrends, [keyword], timeframe, geo)
         reg = interest_by_region(pytrends, [keyword], resolution=resolution)
-        if reg.empty: 
+        if reg.empty:
             continue
         key_cols = [c for c in reg.columns if c.lower() == keyword.lower()]
         key_col  = key_cols[0] if key_cols else (reg.select_dtypes("number").columns.tolist() or [None])[0]
-        if key_col is None: 
+        if key_col is None:
             continue
         subset = ["region", key_col] + [c for c in reg.columns if c == "geoCode"]
         df = reg[subset].rename(columns={key_col: "value", "geoCode": "iso2"})

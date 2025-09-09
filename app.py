@@ -287,11 +287,14 @@ with live_l:
                     if not df.empty:
                         ss.ts_last = df
                         st.toast("Live time series updated", icon="✅")
+                        st.info(f"✅ Live data loaded with {len(df)} rows", icon="📊")
                     else:
                         st.toast("No live data for those settings. Showing demo.", icon="ℹ️")
+                        st.warning("⚠️ Google returned no data. Demo mode fallback.", icon="⚠️")
                 except TooManyRequestsError:
                     st.toast("Rate limited – try again later.", icon="⚠️")
-            st.rerun()
+                    st.error("🚫 Google API Rate Limit. Please try again after a few minutes.")
+
 with live_r:
     st.write("")
 st.markdown("</div>", unsafe_allow_html=True)
