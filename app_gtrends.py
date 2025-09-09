@@ -393,7 +393,7 @@ def render_trends_studio():
     df_live = fetch_iot(tuple(keywords), timeframe, geo_code, live=live_api, force=refresh)
     if (refresh or live_api) and (df_live is None or df_live.empty):
         st.info("⚠️ Live data unavailable (rate limit or no data). Showing demo series.", icon="⚠️")
-    df_overview = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(keywords[:2]))
+    df_overview = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(keywords))
     series_cols = [c for c in df_overview.columns if c != "date"]
 
     k1,k2,k3 = st.columns([0.9, 2.2, 1.1])
@@ -508,7 +508,7 @@ def render_job_market():
         df_live = fetch_iot(tuple(roles), timeframe, geo_code, live=live_api, force=refresh)
         if (refresh or live_api) and (df_live is None or df_live.empty):
             st.info("⚠️ Live data unavailable (rate limit or no data). Showing demo series.", icon="⚠️")
-        df = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(roles[:2]))
+        df = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(roles))
         cols = [c for c in df.columns if c != "date"]
         first = cols[0]
         now_val = int(df[first].iloc[-1]); avg7 = int(df[first].rolling(7, min_periods=1).mean().iloc[-1])
@@ -533,7 +533,7 @@ def render_job_market():
         df_live = fetch_iot(tuple(roles), timeframe, geo_code, live=live_api, force=refresh)
         if (refresh or live_api) and (df_live is None or df_live.empty):
             st.caption("ℹ️ Live series not available; using demo.")
-        df = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(roles[:2]))
+        df = df_live if (isinstance(df_live, pd.DataFrame) and not df_live.empty) else demo_ts(tuple(roles))
         all_series = [c for c in df.columns if c != "date"]
         pick = st.multiselect("Series to show", all_series, default=all_series[:min(3,len(all_series))], key="jm_pick")
         if pick:
@@ -589,9 +589,7 @@ def render_job_market():
                 st.dataframe(rising_df, use_container_width=True, height=360, key="jm_rising_df")
             else:
                 st.warning("No Rising keywords fetched.")
-        render_jm_related_extras(st=st, ctx=dict(
-            rq_dict=rq, timeframe=timeframe, geo_code=geo_code
-        ))
+   
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Job Openings
