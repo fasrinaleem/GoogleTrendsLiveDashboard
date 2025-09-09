@@ -71,16 +71,15 @@ def monthly_region_frames(pytrends, keyword, months=6, geo="", resolution="COUNT
         timeframe = f"{start} {end}"
         _build(pytrends, [keyword], timeframe, geo)
         reg = interest_by_region(pytrends, [keyword], resolution=resolution)
-        if reg.empty:
+        if reg.empty: 
             continue
         key_cols = [c for c in reg.columns if c.lower() == keyword.lower()]
         key_col  = key_cols[0] if key_cols else (reg.select_dtypes("number").columns.tolist() or [None])[0]
-        if key_col is None:
+        if key_col is None: 
             continue
         subset = ["region", key_col] + [c for c in reg.columns if c == "geoCode"]
         df = reg[subset].rename(columns={key_col: "value", "geoCode": "iso2"})
-        # Human-readable month label for animation frame
-        df["date_frame"] = end.strftime("%b %Y")
+        df["date_frame"] = str(end)[:7]  # YYYY-MM
         frames.append(df)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 

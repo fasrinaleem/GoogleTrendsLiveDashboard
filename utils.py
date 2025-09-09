@@ -6,7 +6,7 @@ import pycountry
 def zscore_spikes(series: pd.Series, window: int = 7, z: float = 1.8, min_gap: int = 5) -> pd.DataFrame:
     s = series.astype(float).copy()
     roll_mean = s.rolling(window=window, min_periods=1, center=True).mean()
-    roll_std = s.rolling(window=window, min_periods=1, center=True).std(ddof=0).replace(0, np.nan)
+    roll_std  = s.rolling(window=window, min_periods=1, center=True).std(ddof=0).replace(0, np.nan)
     zs = (s - roll_mean) / roll_std
     spikes_idx, last_i = [], -999
     for i, val in enumerate(zs):
