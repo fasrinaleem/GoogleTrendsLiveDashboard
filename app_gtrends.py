@@ -1,4 +1,5 @@
-# app_gtrends.py — PyTrends-only • Fetch-Live buttons • Color controls • Bigger wordclouds • Job Market related insights
+# app_gtrends.py — PyTrends-only • Fetch-Live buttons • Color controls • Bigger wordclouds
+# + Job Market related insights with keyword↔role correlations
 
 from __future__ import annotations
 
@@ -229,8 +230,8 @@ def live_related_multi(roles: Tuple[str, ...], geo: str, slow: bool) -> Dict[str
     agg_rise: Dict[str,int] = {}
     for r in roles[:5]:
         slot = live_related(r, geo, slow=slow)
-        if not slot: 
-            time.sleep(0.15); 
+        if not slot:
+            time.sleep(0.15)
             continue
         top = _sanitize_related_df(slot.get("top", pd.DataFrame()))
         rising = _sanitize_related_df(slot.get("rising", pd.DataFrame()))
@@ -244,6 +245,150 @@ def live_related_multi(roles: Tuple[str, ...], geo: str, slow: bool) -> Dict[str
     top_df = pd.DataFrame([{"query":k,"value":v} for k,v in agg_top.items()]).sort_values("value", ascending=False)
     rising_df = pd.DataFrame([{"query":k,"value":v} for k,v in agg_rise.items()]).sort_values("value", ascending=False)
     return {"top": top_df.head(200), "rising": rising_df.head(200)}
+
+# NEW: live trending daily & realtime used in section_trending
+@st.cache_data(show_spinner=False, ttl=120)
+def live_trending_daily(geo_name: str = "australia", slow: bool = True) -> pd.DataFrame:
+    try:
+        py = get_client()
+        df = py.trending_searches(pn=geo_name)
+        if df is not None and not df.empty:
+            df = df.copy()
+            df.columns = ["query"]
+            return df
+    except TooManyRequestsError:
+        time.sleep(1.0 if slow else 0.3)
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+@st.cache_data(show_spinner=False, ttl=120)
+def live_trending_rt(geo_code: str = "AU", cat: str = "all", slow: bool = True) -> pd.DataFrame:
+    try:
+        py = get_client()
+        df = py.realtime_trending_searches(pn=geo_code, cat=cat)
+        if df is not None and not df.empty:
+            if "title" not in df.columns:
+                df = df.rename(columns={df.columns[0]: "title"})
+            return df
+    except TooManyRequestsError:
+        time.sleep(1.0 if slow else 0.3)
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+# ───────────────────── Correlation helpers (keywords ↔ roles) ─────────────────────
+def _batch(iterable: List[str], n: int = 5):
+    for i in range(0, len(iterable), n):
+        yield iterable[i:i+n]
+
+@st.cache_data(show_spinner=False, ttl=120)
+def fetch_keyword_series(keywords: Tuple[str, ...], timeframe: str, geo: str, slow: bool) -> pd.DataFrame:
+    """Fetch IoT series for up to 5 keywords (PyTrends max per payload)."""
+    return live_iot(tuple(keywords), timeframe, geo, slow=slow)
+
+@st.cache_data(show_spinner=True, ttl=180)
+def compute_keyword_role_correlations(
+    roles: Tuple[str, ...],
+    related_df: pd.DataFrame,
+    timeframe: str,
+    geo: str,
+    slow: bool,
+    max_keywords: int = 20
+) -> pd.DataFrame:
+    """Compute Pearson correlation between related keywords' IoT series and each role's IoT series."""
+    if related_df is None or related_df.empty:
+        return pd.DataFrame()
+
+    roles = tuple([r for r in roles if isinstance(r, str) and r.strip()])[:5]
+    roles_iot = fetch_keyword_series(roles, timeframe, geo, slow)
+    if roles_iot is None or roles_iot.empty or "date" not in roles_iot.columns:
+        return pd.DataFrame()
+
+    rel_kw = (
+        related_df["query"]
+        .astype(str).str.strip().replace("", np.nan).dropna().drop_duplicates().tolist()
+    )[:max_keywords]
+    if not rel_kw:
+        return pd.DataFrame()
+
+    # Fetch keyword IoT in batches of 5
+    kw_series: Dict[str, pd.Series] = {}
+    for chunk in _batch(rel_kw, 5):
+        dfk = fetch_keyword_series(tuple(chunk), timeframe, geo, slow)
+        if dfk is None or dfk.empty or "date" not in dfk.columns:
+            continue
+        dfk = dfk.copy()
+        dfk["date"] = pd.to_datetime(dfk["date"])
+        for c in [c for c in dfk.columns if c != "date"]:
+            kw_series[c] = dfk.set_index("date")[c].astype(float)
+        time.sleep(0.15 if slow else 0.05)
+
+    if not kw_series:
+        return pd.DataFrame()
+
+    roles_df = roles_iot.copy()
+    roles_df["date"] = pd.to_datetime(roles_df["date"])
+    roles_df = roles_df.drop_duplicates(subset=["date"]).sort_values("date").set_index("date")
+    for r in roles:
+        if r in roles_df.columns:
+            roles_df[r] = pd.to_numeric(roles_df[r], errors="coerce").astype(float)
+
+    out_rows = []
+    for q, s_kw in kw_series.items():
+        joint = roles_df.join(s_kw.rename("kw"), how="inner").dropna(how="any")
+        if joint.empty:
+            row = {"query": q}
+            row.update({f"corr_{r}": np.nan for r in roles})
+            out_rows.append(row)
+            continue
+        row = {"query": q}
+        for r in roles:
+            if r in joint.columns:
+                try:
+                    row[f"corr_{r}"] = float(joint["kw"].corr(joint[r]))
+                except Exception:
+                    row[f"corr_{r}"] = np.nan
+            else:
+                row[f"corr_{r}"] = np.nan
+        out_rows.append(row)
+
+    corr_df = pd.DataFrame(out_rows)
+
+    def _best(row):
+        vals = {r: row.get(f"corr_{r}") for r in roles}
+        vals = {k:v for k,v in vals.items() if pd.notna(v)}
+        if not vals:
+            return ""
+        best_role = max(vals, key=lambda k: vals[k])
+        return f"{best_role} ({vals[best_role]:.2f})"
+    corr_df["best_match"] = corr_df.apply(_best, axis=1)
+
+    sort_cols = [f"corr_{r}" for r in roles]
+    corr_df["_max_corr"] = corr_df[sort_cols].max(axis=1, skipna=True)
+    corr_df = corr_df.sort_values("_max_corr", ascending=False).drop(columns="_max_corr")
+    return corr_df
+
+def render_correlation_heatmap(corr_df: pd.DataFrame, roles: Tuple[str, ...], title: str):
+    """Renders a keyword x role correlation heatmap."""
+    try:
+        cols = [f"corr_{r}" for r in roles if f"corr_{r}" in corr_df.columns]
+        if not cols or corr_df.empty:
+            st.info("No correlation values available to render.")
+            return
+        mat = corr_df[["query"] + cols].set_index("query")
+        fig = px.imshow(
+            mat,
+            aspect="auto",
+            color_continuous_scale="RdBu",
+            zmin=-1.0, zmax=1.0,
+            labels=dict(color="Pearson r"),
+            title=None,
+        )
+        fig.update_layout(template="plotly_white", margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.caption(f"Heatmap skipped: {e}")
 
 # ───────────────────── Viz helpers ─────────────────────
 def get_line_palette(name: str) -> List[str]:
@@ -503,9 +648,8 @@ def job_market(ctrl: Dict[str, Any]):
                 st.markdown("<span class='badge-ok'>Live ✓</span>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # NEW: Overview related insights (word cloud + tables) for SELECTED ROLES (combined)
+        # Overview related insights (word cloud + tables) for SELECTED ROLES (combined)
         st.markdown(f'<div class="section"><div class="section-h"><h2>Related Insights (combined roles)</h2><div class="chip">{", ".join(roles)}</div></div>', unsafe_allow_html=True)
-        # fallback combined
         demo = fb_related_for_roles(roles)
         img = wordcloud_from_related(demo["top"], demo["rising"], ctrl["wc_max"], ctrl["wc_cmap"])
         st.image(img, caption="Related queries — combined roles", use_container_width=True)
@@ -565,36 +709,71 @@ def job_market(ctrl: Dict[str, Any]):
                                    "job_regions_all_frames.csv", "text/csv")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Top & Rising
+    # Top & Rising (with correlations)
     with tabs[3]:
         st.markdown(f'<div class="section"><div class="section-h"><h2>Top & Rising Related Keywords</h2><div class="chip">Scope: {scope_label}</div></div>', unsafe_allow_html=True)
+
         target = st.selectbox("Source", options=["All selected roles (combined)"] + roles, index=0, key="jm_rel_source")
-        # fallback
+        mode = st.radio("Dataset", ["Top", "Rising"], horizontal=True, index=0, key="jm_rel_mode")
+        max_kw = st.slider("Max keywords for correlation", 5, 40, 20, 5, key="jm_rel_maxkw")
+
+        # Fallback
         if target == "All selected roles (combined)":
             demo = fb_related_for_roles(roles)
         else:
             demo = fb_related_for_roles([target])
         wc = wordcloud_from_related(demo["top"], demo["rising"], ctrl["wc_max"], ctrl["wc_cmap"])
         st.image(wc, caption=f"Related — {target}", use_container_width=True)
-        if st.button("Fetch Live (Top & Rising)", key="btn_jm_related_live_tab"):
+
+        # Live + correlations
+        if st.button("Fetch Live (Top/Rising + Correlations)", key="btn_jm_related_live_tab"):
             if target == "All selected roles (combined)":
                 rq = live_related_multi(tuple(roles), geo_code, slow=ctrl["slow"])
             else:
-                rq = live_related(target, geo_code, slow=ctrl["slow"])
-                if rq:
-                    rq = {"top": _sanitize_related_df(rq.get("top", pd.DataFrame())),
-                          "rising": _sanitize_related_df(rq.get("rising", pd.DataFrame()))}
+                rqo = live_related(target, geo_code, slow=ctrl["slow"])
+                if rqo:
+                    rqo = {"top": _sanitize_related_df(rqo.get("top", pd.DataFrame())),
+                           "rising": _sanitize_related_df(rqo.get("rising", pd.DataFrame()))}
+                rq = rqo
+
             if rq:
-                img = wordcloud_from_related(rq["top"], rq["rising"], ctrl["wc_max"], ctrl["wc_cmap"])
+                # Word cloud
+                img = wordcloud_from_related(rq.get("top"), rq.get("rising"), ctrl["wc_max"], ctrl["wc_cmap"])
                 st.image(img, caption=f"Related — {target}", use_container_width=True)
                 st.markdown("<span class='badge-ok'>Live ✓</span>", unsafe_allow_html=True)
-                c1,c2 = st.columns(2)
-                with c1:
-                    st.write("### Top")
-                    st.dataframe(rq["top"].head(200), use_container_width=True, height=360)
-                with c2:
-                    st.write("### Rising")
-                    st.dataframe(rq["rising"].head(200), use_container_width=True, height=360)
+
+                # Which set to analyze
+                src_df = rq["top"] if mode == "Top" else rq["rising"]
+                src_df = _sanitize_related_df(src_df)
+
+                with st.spinner("Computing keyword↔role correlations..."):
+                    corr_df = compute_keyword_role_correlations(
+                        roles=tuple(roles),
+                        related_df=src_df,
+                        timeframe=ctrl["jm_timeframe"],
+                        geo=geo_code,
+                        slow=ctrl["slow"],
+                        max_keywords=int(max_kw),
+                    )
+
+                if corr_df is not None and not corr_df.empty:
+                    st.subheader("Correlation heatmap (keyword vs role)")
+                    render_correlation_heatmap(corr_df, tuple(roles), title="Keyword↔Role correlations")
+
+                    st.subheader("Correlation table")
+                    role_cols = [f"corr_{r}" for r in roles if f"corr_{r}" in corr_df.columns]
+                    disp = corr_df[["query", "best_match"] + role_cols].copy()
+                    st.dataframe(disp, use_container_width=True, height=520)
+                    st.download_button(
+                        "⬇️ Download correlations (CSV)",
+                        disp.to_csv(index=False).encode("utf-8"),
+                        file_name=f"correlations_{mode.lower()}_{scope_label.replace(' ','_')}.csv",
+                        mime="text/csv",
+                    )
+                else:
+                    st.info("No correlations could be computed (try fewer roles/keywords, shorter timeframe, or enable Slow mode).")
+            else:
+                st.info("No live related keywords received. Try a different role set, timeframe, or region.")
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Job Openings
@@ -619,7 +798,7 @@ def main():
         trends_studio(ctrl)
     else:
         job_market(ctrl)
-    st.caption("© 2025 · Trends Hub · PyTrends • Per-section “Fetch Live” • Color controls • Bigger wordclouds")
+    st.caption("© 2025 · Trends Hub · PyTrends • Per-section “Fetch Live” • Color controls • Bigger wordclouds • Correlations")
 
 if __name__ == "__main__":
     main()
