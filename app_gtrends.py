@@ -1,6 +1,3 @@
-# app_gtrends.py — PyTrends-only • Fetch-Live buttons • Color controls • Bigger wordclouds
-# + Job Market related insights with keyword↔role correlations
-
 from __future__ import annotations
 
 import time
