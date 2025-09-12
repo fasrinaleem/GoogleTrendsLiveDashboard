@@ -2,6 +2,9 @@
 
 A modern Streamlit app for exploring Google Trends with **live, on-demand fetches**, **annotated time-series**, **animated regional maps**, and **word-cloud insights**—plus a **Job-Market** view that aggregates related skills across roles. It’s designed to load instantly using lightweight fallbacks, and only call the Google Trends endpoint when you explicitly click **Fetch Live**.
 
+## Demo
+https://drive.google.com/file/d/1WJGgwG27d0DRhM6I9-HHzX6uPMSEU0Jf/view?usp=sharing
+
 ---
 
 ## ✨ Highlights
