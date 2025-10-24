@@ -16,30 +16,16 @@ from pytrends.exceptions import TooManyRequestsError
 
 # ───────────────────── Page & theme ─────────────────────
 st.set_page_config(page_title="Trends Hub", page_icon="📊", layout="wide")
-st.markdown(
-    """
-<style>
-:root{--card-brd:#e9eaf0;--muted:#64748b;--ink:#0f172a;}
-html,body,.stApp{background:#fff}
-.hero{background:radial-gradient(1200px 420px at 12% -15%, rgba(109,40,217,.12),transparent),
-linear-gradient(90deg, rgba(109,40,217,.10), rgba(37,99,235,.08));
-border:1px solid var(--card-brd);border-radius:18px;padding:18px 22px;margin:10px 0 16px;box-shadow:0 8px 26px rgba(17,24,39,.06)}
-.hero h1{margin:0;font-size:1.9rem}
-.subtle{color:#475569;font-size:.95rem;margin-top:6px}
-.section{background:linear-gradient(180deg,#fff,#fbfcff);border:1px solid var(--card-brd);border-radius:18px;padding:16px;margin:6px 0 18px;box-shadow:0 8px 24px rgba(17,24,39,.05)}
-.section-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.section-h h2{margin:0;font-size:1.25rem;color:var(--ink)}
-.chip{display:inline-block;padding:6px 10px;border-radius:999px;font-size:.75rem;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3}
-.kpi{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:12px;background:linear-gradient(180deg,#fff,#f9fbff);border:1px solid var(--card-brd)}
-.kpi-label{color:#64748b;font-size:.72rem;text-transform:uppercase}
-.kpi-value{font-size:1.32rem;font-weight:800;color:#111827}
-.badge-ok{background:#ecfdf5;border:1px solid #10b981;color:#065f46;border-radius:10px;padding:6px 10px;font-size:.8rem;display:inline-block;margin-top:6px}
-.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:8px 10px;font-size:.85rem;display:inline-block;margin:6px 0}
-</style>
-""",
-    unsafe_allow_html=True,
-)
 
+# ───────────────────── Load CSS file ─────────────────────
+def load_css(path: str = "styles.css"):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning(f"Could not find {path}. Make sure it exists next to this script.")
+
+load_css("styles.css")
 # ───────────────────── Small utils ─────────────────────
 def chart_key(prefix: str, *parts) -> str:
     return (prefix + ":" + "|".join(str(p) for p in parts if p is not None))[:200]
