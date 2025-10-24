@@ -45,20 +45,34 @@ def render():
         with st.spinner("Fetching trending data..."):
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown("**Daily Trending**")
-                daily = fetch_trending_daily(geo_code.lower() if geo_code else "australia")
-                if not daily.empty:
-                    st.dataframe(daily.head(15), use_container_width=True, height=400)
-                else:
-                    st.warning("No daily trending data.")
+                st.markdown("**Daily Trending (Popular Searches)**")
+                try:
+                    # Use proper geo code format
+                    geo_param = geo_code.lower() if geo_code else "australia"
+                    daily = fetch_trending_daily(geo_param)
+                    
+                    if not daily.empty and "query" in daily.columns:
+                        st.dataframe(daily.head(20), use_container_width=True, height=400)
+                        st.caption(f"✓ Loaded {len(daily)} trending searches")
+                    else:
+                        st.warning("⚠️ No daily trending data available. This API is often restricted by region.")
+                except Exception as e:
+                    st.error(f"Error fetching daily trends: {str(e)[:100]}")
             
             with c2:
-                st.markdown("**Realtime Trending**")
-                realtime = fetch_trending_realtime(geo_code or "AU", "all")
-                if not realtime.empty:
-                    st.dataframe(realtime.head(15), use_container_width=True, height=400)
-                else:
-                    st.warning("No realtime trending data.")
+                st.markdown("**Realtime Trending (Hot Topics)**")
+                try:
+                    # Use 2-letter country code
+                    geo_rt = geo_code if geo_code and len(geo_code) == 2 else "AU"
+                    realtime = fetch_trending_realtime(geo_rt, "all")
+                    
+                    if not realtime.empty and "title" in realtime.columns:
+                        st.dataframe(realtime.head(20), use_container_width=True, height=400)
+                        st.caption(f"✓ Loaded {len(realtime)} realtime trends")
+                    else:
+                        st.warning("⚠️ No realtime trending data available. Try a different region or wait a few minutes.")
+                except Exception as e:
+                    st.error(f"Error fetching realtime trends: {str(e)[:100]}")
     else:
         st.info("👆 Click **Fetch Live Trending** to load current trending searches")
 
