@@ -158,14 +158,14 @@ Then open http://localhost:8501 in your browser.
 | **Job Market** | <img width="1000" alt="Job Market Page" src="https://github.com/user-attachments/assets/11b2f681-1c24-41af-af4e-355a760f1629" /> |
 | **Trends Studio** | <img width="1000" alt="Trends Studio Page" src="https://github.com/user-attachments/assets/e643cf3a-928e-40ed-81ab-704a11238cfb" /> |
 
-🔐 Data Handling Notes
+## 🔐 Data Handling Notes
 	•	Uses PyTrends wrapper to communicate with Google Trends.
 	•	Includes API retry logic and polite request delays.
 	•	Fallback datasets simulate real data when API rate-limit is hit.
 	•	All sections use session persistence, preventing unnecessary API calls.
 
 
-🧰 Dependencies
+## 🧰 Dependencies
 	•	streamlit
 	•	pandas
 	•	plotly
@@ -174,21 +174,21 @@ Then open http://localhost:8501 in your browser.
 	•	pillow
 	•	numpy
 
-Install via:
+## Install via:
 pip install -r requirements.txt
 
 
-This project is licensed under the MIT License.
+## This project is licensed under the MIT License.
 You’re free to use, modify, and distribute it with attribution.
 
 
-💡 Acknowledgements
+## 💡 Acknowledgements
 	•	Google Trends API (PyTrends)
 	•	Streamlit
 	•	Plotly Express
 	•	WordCloud Python Library
 
-🧩 Summary
+## 🧩 Summary
 
 The Google Trends Live Dashboard transforms raw Google search data into actionable insights.
 From skill interest analytics to job salary comparisons and global market intelligence — this project provides a modern, data-driven view of the world’s career landscape in real time.
