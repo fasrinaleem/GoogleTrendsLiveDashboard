@@ -125,7 +125,6 @@ streamlit run Main.py
 
 Then open http://localhost:8501 in your browser.
 
-🛠️ Tech Stack
 ## 🛠️ Tech Stack
 
 | Layer | Technology |
@@ -137,7 +136,6 @@ Then open http://localhost:8501 in your browser.
 | **Design** | Google Fonts (Roboto), Custom CSS |
 | **Hosting** | Streamlit Cloud / Localhost |
 
-📈 Improvements from Previous Version
 ## 📈 Improvements from Previous Version
 
 | Area | Previous Version | Current Version |
@@ -151,16 +149,14 @@ Then open http://localhost:8501 in your browser.
 | **Visualizations** | Line chart only | Bar charts, word clouds, maps, animated visuals |
 | **Scalability** | Monolithic | Modular & easily expandable |
 
-
-📸 Screenshots
 ## 📸 Screenshots
 
 | Module | Preview |
 |--------|----------|
-| **Main** | <img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/6711e8be-cf40-4caa-9978-a7cbd4e97848" /> |
-| **Skills** | <img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/e5652a46-1589-4337-b3a7-661dd6239a7b" /> |
-| **Job Market** | <img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/11b2f681-1c24-41af-af4e-355a760f1629" /> |
-| **Trends Studio** | <img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/e643cf3a-928e-40ed-81ab-704a11238cfb" /> |
+| **Main** | <img width="1000" alt="Main Page" src="https://github.com/user-attachments/assets/6711e8be-cf40-4caa-9978-a7cbd4e97848" /> |
+| **Skills** | <img width="1000" alt="Skills Page" src="https://github.com/user-attachments/assets/e5652a46-1589-4337-b3a7-661dd6239a7b" /> |
+| **Job Market** | <img width="1000" alt="Job Market Page" src="https://github.com/user-attachments/assets/11b2f681-1c24-41af-af4e-355a760f1629" /> |
+| **Trends Studio** | <img width="1000" alt="Trends Studio Page" src="https://github.com/user-attachments/assets/e643cf3a-928e-40ed-81ab-704a11238cfb" /> |
 
 🔐 Data Handling Notes
 	•	Uses PyTrends wrapper to communicate with Google Trends.
