@@ -108,7 +108,7 @@ GOOGLETRENDSLIVEDASHBOARD/
 ## ⚙️ Installation Guide
 
 ### Step 1 — Clone the Repository
-```bash
+` ` `bash
 git clone https://github.com/yourusername/GoogleTrendsLiveDashboard.git
 cd GoogleTrendsLiveDashboard
 
