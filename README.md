@@ -1,4 +1,4 @@
-<img width="1893" height="979" alt="image" src="https://github.com/user-attachments/assets/576e822c-3f1e-4393-b4b6-919f088f090c" /># 📊 Google Trends Live Dashboard
+# 📊 Google Trends Live Dashboard
 
 A powerful multi-page **Streamlit** web application that visualizes **real-time and historical Google Trends data** for job roles, skills, and global market analysis.
 
@@ -157,10 +157,10 @@ Then open http://localhost:8501 in your browser.
 
 | Module | Preview |
 |--------|----------|
-| **Main** | ![Main Page](<img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/6711e8be-cf40-4caa-9978-a7cbd4e97848" />) |
-| **Skills** | ![Skills Page](<img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/e5652a46-1589-4337-b3a7-661dd6239a7b" />) |
-| **Job Market** | ![Job Market Page](<img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/11b2f681-1c24-41af-af4e-355a760f1629" />) |
-| **Trends Studio** | ![Trends Studio Page](<img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/e643cf3a-928e-40ed-81ab-704a11238cfb" />) |
+| **Main** | <img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/6711e8be-cf40-4caa-9978-a7cbd4e97848" /> |
+| **Skills** | <img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/e5652a46-1589-4337-b3a7-661dd6239a7b" /> |
+| **Job Market** | <img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/11b2f681-1c24-41af-af4e-355a760f1629" /> |
+| **Trends Studio** | <img width="1893" height="979" alt="Image" src="https://github.com/user-attachments/assets/e643cf3a-928e-40ed-81ab-704a11238cfb" /> |
 
 🔐 Data Handling Notes
 	•	Uses PyTrends wrapper to communicate with Google Trends.
