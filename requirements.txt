@@ -1,10 +1,5 @@
+
 streamlit
 pytrends
 pandas
-numpy
 plotly
-wordcloud
-Pillow
-pycountry
-tenacity
-urllib3<2.0
