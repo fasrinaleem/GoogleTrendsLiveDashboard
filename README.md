@@ -1,182 +1,194 @@
-# Trends Hub (PyTrends-only) — README
+# 📊 Google Trends Live Dashboard
 
-A modern Streamlit app for exploring Google Trends with **live, on-demand fetches**, **annotated time-series**, **animated regional maps**, and **word-cloud insights**—plus a **Job-Market** view that aggregates related skills across roles. It’s designed to load instantly using lightweight fallbacks, and only call the Google Trends endpoint when you explicitly click **Fetch Live**.
+A powerful multi-page **Streamlit** web application that visualizes **real-time and historical Google Trends data** for job roles, skills, and global market analysis.
 
-## Demo
-https://drive.google.com/file/d/1WJGgwG27d0DRhM6I9-HHzX6uPMSEU0Jf/view?usp=sharing
-
----
-
-## ✨ Highlights
-
-- **PyTrends-only** (no SerpAPI or other providers).
-- **Per-section “Fetch Live” buttons** → no surprise reruns.
-- **Two views**:
-  - **Trends Studio**: free-form keywords, interest over time, map, related queries.
-  - **Job Market**: role-based trends, combined related skill cloud, openings links.
-- **Color controls**: choose line palettes & map color scales.
-- **Bigger word clouds** with adjustable colormap & max words.
-- **Safe fallbacks** ensure the UI renders even if you hit API limits.
-- **Throttling, caching, and retry logic** to reduce 429s.
-- **Download buttons** for CSV exports (series & regions).
-- **Animated visuals** using **Plotly** (maps, heatmaps, time-series).
+This project helps students, professionals, and researchers explore **job market trends**, **skill popularity**, **salary ranges**, **career growth paths**, and **global search interest** — all within a single, interactive, and visually appealing dashboard.
 
 ---
 
-## 🧱 Project Structure
+## 🌟 Overview
 
-```
-.
-├── app_gtrends.py     # Main Streamlit app (UI + sections + live calls + fallbacks)
-├── trends.py          # Thin wrapper around PyTrends with retry + throttling
-├── utils.py           # ISO helpers + spike detection utilities
-└── viz.py             # Plotly charts + wordcloud renderer
-```
+This system was rebuilt from the ground up with a **new modular architecture**, modern UI, and more features.  
+Users can now analyze any skill or job role using real-world Google search data and receive instant insights across time, region, and industry.
 
----
-
-## 🔧 Requirements
-
-- **Python**: 3.9 – 3.12
-- **Packages**:
-  - `streamlit` → web framework
-  - `pandas`, `numpy` → data handling
-  - `plotly` → charts + **animations**
-  - `pytrends` → Google Trends client
-  - `wordcloud` → word cloud visualizations
-  - `tenacity` → retry logic
-  - `pycountry` → country code lookups
-
-### Install
-
-```bash
-# recommend using a venv
-python -m venv .venv
-source .venv/bin/activate     # Windows: .venv\Scripts\activate
-
-pip install -U pip
-pip install streamlit pandas numpy plotly pytrends wordcloud tenacity pycountry
-```
+### 🔑 Highlights
+- Real-time and cached **PyTrends API** integration.
+- Dynamic **interest over time** and **regional analytics**.
+- **Animated world maps**, **word clouds**, and **career recommendations**.
+- Built-in modules for **Skills**, **Job Market**, and **Trends Studio**.
+- Professional white-themed UI with **Google Material-inspired styling**.
 
 ---
 
-## ▶️ Run the App
+## 🧭 Navigation & Pages
 
-```bash
-streamlit run app_gtrends.py
-```
+### 🏠 **Main Page**
+The first landing page users see.
 
-Open the URL printed in your terminal (usually `http://localhost:8501/`).
-
----
-
-## 🖥️ How the App Works
-
-1. The app renders instantly using **fallback demo data** (synthetic but realistic).
-2. You choose options **in the sidebar**: view, region, timeframe, colors, wordcloud settings.
-3. In each section you can click **“Fetch Live”** to retrieve fresh data from Google Trends via **PyTrends**.
-4. Responses are **cached** briefly (90s) to avoid duplicate calls during quick interactions.
-5. **Slow mode** spacing reduces the risk of HTTP 429 (rate limiting).
-6. **Plotly animations** are used for:
-   - **Choropleth maps** (`px.choropleth` with `animation_frame`)
-   - **Heatmaps** (`px.imshow` with color scales)
-   - **Time-series** line charts with spikes.
+**Features:**
+- Elegant white-themed landing UI.
+- Animated introduction banner.
+- Quick access buttons for:
+  - 📈 Trends Studio  
+  - 🧠 Skills  
+  - 💼 Job Market
+- Project overview and purpose summary.
 
 ---
 
-## 🌏 Regions & Geo Resolution
+### 🧠 **Skills Page**
+_Analyze how skills evolve in popularity and where they’re most in demand._
 
-- The function `resolve_geo()` normalizes your input:
-  - `"Worldwide"` → `geo=""`
-  - `"Australia"` → `geo="AU"`
-  - `"Perth"` → returns `(geo="AU", city_filter="Perth")`
-  - `"Custom"` → country name or ISO-2 (e.g., `US`, `India`, `DE`)
-- **Animated maps** use:
-  - `COUNTRY` resolution by default
-  - `CITY` resolution if a `city_filter` is present (when using “Perth”)
+**Key Functions:**
+- 📈 **Interest Over Time (12 months)** – visual line graph.  
+- 🗺️ **Interest by Region** – bar chart by state or country.  
+- 🌍 **Worldwide Animated Map** – bubble map showing global trends.  
+- ☁️ **Word Cloud** – generated from top & rising related queries.  
+- 💼 **Job Role Matcher** – suggests roles and career paths based on keywords.
 
-> Note: City resolution depends on PyTrends/Google Trends availability and can be sparse.
-
----
-
-## 🧩 Views & Sections
-
-### 1) Trends Studio
-
-- **Top Trending Searches Today**  
-  - Daily + Realtime trending (with optional live fetch)
-- **Interest Over Time (annotated)**  
-  - IoT series with KPI cards + spike markers  
-- **Animated Map — Interest by Region**  
-  - **Plotly animated choropleth** with fallback + live fetch
-- **Related Queries — Word Cloud**  
-  - Word cloud + tables (Top & Rising keywords)
-
-### 2) Job Market
-
-- **Overview** → IoT for selected roles + related queries cloud
-- **Trends by Date** → role time-series
-- **Interest by Region (animated)** → regional animated map per role
-- **Top & Rising (with correlations)** →  
-  - Word cloud of related keywords  
-  - Correlation **heatmap** (Plotly) between related keywords and selected roles  
-  - Correlation table with CSV download
-- **Job Openings** → Quick links to LinkedIn, Seek, Indeed
+**Example Use:**  
+Search “Python” → See Australian state trends, global map, word cloud, and matching roles like Data Scientist or Backend Developer.
 
 ---
 
-## 🧮 Visualization Layer
+### 💼 **Job Market Page**
+_Compare job roles, salaries, and related keywords over time._
 
-- **Plotly** → line charts, animated maps, heatmaps
-- **Wordcloud** → keyword clouds
-- **Custom HTML/CSS** → KPI cards
-
----
-
-## 🚀 Deployment
-
-### Streamlit Cloud
-Push repo → deploy → set Python version + requirements.
-
-### Docker
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir streamlit pandas numpy plotly pytrends wordcloud tenacity pycountry
-EXPOSE 8501
-CMD ["streamlit", "run", "app_gtrends.py", "--server.port=8501", "--server.address=0.0.0.0"]
-```
-
-Build & run:
-```bash
-docker build -t trends-hub .
-docker run -p 8501:8501 trends-hub
-```
+**Key Functions:**
+- 📊 **Interest Over Time** – multi-role comparison (e.g., Data Analyst vs Business Analyst).  
+- 💰 **Salary Range (AUD)** – bar chart for Entry, Median, Senior, and Top 10% levels.  
+- 🌎 **Worldwide Popularity (Animated Map)** – monthly visualization of interest growth.  
+- 🔝 **Top & Rising Keywords** – tables and visuals for role-related trending queries.  
+- ☁️ **Word Cloud** – based on related searches.  
+- 🎓 **Course Finder** – opens relevant learning platforms (Coursera, edX, Udemy, LinkedIn).  
+- 🔗 **Job Openings Links** – connect directly to SEEK, LinkedIn Jobs, or Indeed.
 
 ---
 
-## 📜 License
+### 🌐 **Trends Studio**
+_Global job trends, market topics, and highest paying roles overview._
 
-MIT License (example)  
-© 2025 · Trends Hub
-
----
-
-## 🙌 Credits
-
-- Built with **Streamlit** + **Plotly**
-- Data via **PyTrends**
-- Country codes via **pycountry**
-- Word clouds via **wordcloud**
+**Key Functions:**
+- 🔟 **Trending Keywords** – Top 10 most searched career-related terms.  
+- 📰 **Trending Topics** – world job market and tech industry themes.  
+- 🌍 **World Trending News** – region-wise professional trend highlights.  
+- 💸 **Highest Paying Jobs Summary (AUD)** – top-earning countries and roles.
 
 ---
 
-## 🧭 Quick Start Cheatsheet
+## 🧩 Project Architecture
 
-1. `streamlit run app_gtrends.py`
-2. Pick **Trends Studio** or **Job Market** in sidebar
-3. Adjust **Region**, **Timeframe**, **Colors**
-4. Enter keywords/roles
-5. Click **Fetch Live** in each section
-6. Download CSVs when needed
+GOOGLETRENDSLIVEDASHBOARD/
+│
+├── .streamlit/                 # Streamlit configuration
+├── pages/                      # Multi-page app structure
+│   ├── Job_Market.py           # Job analytics and market trends
+│   ├── Skills.py               # Skills analysis and role insights
+│   └── Trends_Studio.py        # Macro view of trends and global insights
+│
+├── Main.py                     # Landing page and navigation
+├── style.css                   # Unified white design & animations
+├── requirements.txt             # Dependencies
+└── .gitignore / LICENSE         # Repo essentials
+
+
+---
+
+## 🧠 Data Flow & Logic
+
+1. **User Input:** Skill or Job Role + Region  
+2. **PyTrends API:** Fetches real-time Google Trends data  
+3. **Fallback Handling:** If API limit exceeded → cached data loads automatically  
+4. **Processing:** Pandas transforms and normalizes data  
+5. **Visualization:** Rendered via Plotly, Streamlit, and WordCloud  
+6. **Session State:** Caches results to maintain persistence across navigation  
+
+---
+
+## ⚙️ Installation Guide
+
+### Step 1 — Clone the Repository
+` ` `bash
+git clone https://github.com/yourusername/GoogleTrendsLiveDashboard.git
+cd GoogleTrendsLiveDashboard
+
+Step 2 — Create Virtual Environment (Optional)
+python -m venv venv
+source venv/bin/activate   # macOS/Linux
+venv\Scripts\activate      # Windows
+
+Step 3 — Install Requirements
+pip install -r requirements.txt
+
+Step 4 — Launch Streamlit App
+streamlit run Main.py
+
+Then open http://localhost:8501 in your browser.
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-------------|
+| **Frontend** | Streamlit + CSS |
+| **Backend** | Python 3.11+ |
+| **Data Source** | Google Trends (PyTrends API) |
+| **Visuals** | Plotly, WordCloud |
+| **Design** | Google Fonts (Roboto), Custom CSS |
+| **Hosting** | Streamlit Cloud / Localhost |
+
+## 📈 Improvements from Previous Version
+
+| Area | Previous Version | Current Version |
+|------|------------------|-----------------|
+| **Architecture** | Single-page, mixed logic | Modular 3-page design (Skills, Job Market, Trends Studio) |
+| **Design** | Dark theme, minimal layout | Professional white theme via CSS styling |
+| **Data Handling** | Static data only | Live API + cached fallback mechanism |
+| **Performance** | Redundant reloads | Optimized via Streamlit session state |
+| **Features** | Keyword trends only | Salary, courses, jobs, world map, and word cloud added |
+| **User Navigation** | Sidebar links only | Clean landing with page-link buttons |
+| **Visualizations** | Line chart only | Bar charts, word clouds, maps, animated visuals |
+| **Scalability** | Monolithic | Modular & easily expandable |
+
+## 📸 Screenshots
+
+| Module | Preview |
+|--------|----------|
+| **Main** | <img width="1000" alt="Main Page" src="https://github.com/user-attachments/assets/6711e8be-cf40-4caa-9978-a7cbd4e97848" /> |
+| **Skills** | <img width="1000" alt="Skills Page" src="https://github.com/user-attachments/assets/e5652a46-1589-4337-b3a7-661dd6239a7b" /> |
+| **Job Market** | <img width="1000" alt="Job Market Page" src="https://github.com/user-attachments/assets/11b2f681-1c24-41af-af4e-355a760f1629" /> |
+| **Trends Studio** | <img width="1000" alt="Trends Studio Page" src="https://github.com/user-attachments/assets/e643cf3a-928e-40ed-81ab-704a11238cfb" /> |
+
+## 🔐 Data Handling Notes
+	•	Uses PyTrends wrapper to communicate with Google Trends.
+	•	Includes API retry logic and polite request delays.
+	•	Fallback datasets simulate real data when API rate-limit is hit.
+	•	All sections use session persistence, preventing unnecessary API calls.
+
+
+## 🧰 Dependencies
+	•	streamlit
+	•	pandas
+	•	plotly
+	•	pytrends
+	•	wordcloud
+	•	pillow
+	•	numpy
+
+## Install via:
+pip install -r requirements.txt
+
+
+## This project is licensed under the MIT License.
+You’re free to use, modify, and distribute it with attribution.
+
+
+## 💡 Acknowledgements
+	•	Google Trends API (PyTrends)
+	•	Streamlit
+	•	Plotly Express
+	•	WordCloud Python Library
+
+## 🧩 Summary
+
+The Google Trends Live Dashboard transforms raw Google search data into actionable insights.
+From skill interest analytics to job salary comparisons and global market intelligence — this project provides a modern, data-driven view of the world’s career landscape in real time.

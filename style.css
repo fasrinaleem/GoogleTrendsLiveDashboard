@@ -1,0 +1,191 @@
+/* ----------------------------
+   Streamlit White Theme + Animations
+   ---------------------------- */
+
+/* App container + base colors */
+:root{
+  --bg: #ffffff;
+  --bg-soft: #f7f8fa;
+  --text: #111827;          /* slate-900 */
+  --muted: #6b7280;         /* slate-500 */
+  --primary: #2563eb;       /* blue-600 */
+  --primary-700: #1d4ed8;
+  --ring: rgba(37, 99, 235, 0.15);
+  --card: #ffffff;
+  --shadow: rgba(2, 6, 23, 0.08);
+  --shadow-strong: rgba(2,6,23,0.12);
+}
+
+html, body, [data-testid="stAppViewContainer"]{
+  background: var(--bg) !important;
+  color: var(--text);
+}
+
+/* Make the main block wider and padded */
+.block-container{
+  padding-top: 1.6rem !important;
+  padding-bottom: 4rem !important;
+  max-width: 1200px;
+}
+
+/* Headings */
+h1, h2, h3{
+  color: var(--text) !important;
+  letter-spacing: -0.015em;
+}
+h1{ font-weight: 800; }
+h2{ font-weight: 700; margin-top: 1.25rem; }
+h3{ font-weight: 700; }
+
+/* Links */
+a, .stMarkdown a{
+  color: var(--primary) !important;
+  text-decoration: none !important;
+}
+a:hover{ text-decoration: underline !important; }
+
+/* Section card look using containers with border */
+.st-emotion-cache-ue6h4q, /* streamlit container (border=True) */
+[data-testid="stVerticalBlock"] > div:has(> .st-emotion-cache-ue6h4q){
+  border-radius: 16px !important;
+  background: var(--card) !important;
+  box-shadow: 0 6px 18px var(--shadow);
+  border: 1px solid #eef1f6;
+}
+
+/* Subtle card hover raise */
+.st-emotion-cache-ue6h4q:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px var(--shadow-strong);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+
+/* Buttons: pill, elevated, animated */
+.stButton > button{
+  background: linear-gradient(180deg, var(--primary), var(--primary-700));
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: .65rem 1.1rem;
+  font-weight: 600;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, .25);
+  transition: transform .06s ease, box-shadow .2s ease, filter .2s ease;
+}
+.stButton > button:hover{
+  filter: brightness(1.03);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, .28);
+}
+.stButton > button:active{
+  transform: translateY(1px);
+}
+
+/* Link Buttons */
+a[kind="secondary"]{
+  border-radius: 10px !important;
+  border-color: #e5e7eb !important;
+  background: #fff !important;
+  color: var(--primary) !important;
+}
+
+/* Inputs: clean, white, focused ring */
+.stTextInput > div > div > input,
+.stSelectbox > div > div > div[data-baseweb="select"] > div,
+.stNumberInput input,
+.stTextArea textarea{
+  background: #fff !important;
+  border-radius: 12px !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: none !important;
+}
+.stTextInput > div > div > input:focus,
+.stSelectbox [data-baseweb="select"]:focus-within,
+.stNumberInput input:focus,
+.stTextArea textarea:focus{
+  outline: none !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 4px var(--ring) !important;
+}
+
+/* Tabs: underline style */
+[data-baseweb="tab-list"]{
+  border-bottom: 1px solid #eef1f6;
+}
+[data-baseweb="tab"]{
+  color: var(--muted);
+  font-weight: 600;
+}
+[data-baseweb="tab"][aria-selected="true"]{
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+}
+
+/* Dataframes: rounded & soft shadow */
+.stDataFrame, .stTable{
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  box-shadow: 0 6px 18px var(--shadow);
+  border: 1px solid #eef1f6;
+}
+
+/* Plotly figure containers (kept white) */
+.js-plotly-plot, .stPlotlyChart{
+  background: #fff !important;
+  border-radius: 14px !important;
+  box-shadow: 0 6px 18px var(--shadow);
+  padding: .5rem;
+  border: 1px solid #eef1f6;
+}
+
+/* Dividers */
+hr{
+  border-color: #eef1f6 !important;
+  opacity: 1 !important;
+}
+
+/* Scrollbar (WebKit) */
+::-webkit-scrollbar{ width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb{
+  background: #d1d5db;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover{ background: #bfc5cf; }
+
+/* ----------------------------
+   Animations
+   ---------------------------- */
+@keyframes fadeInUp{
+  from{ opacity: 0; transform: translateY(12px); }
+  to{ opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn{
+  from{ opacity: 0; }
+  to{ opacity: 1; }
+}
+@keyframes subtlePulse{
+  0%{ box-shadow: 0 0 0 0 rgba(37,99,235,0.18); }
+  70%{ box-shadow: 0 0 0 18px rgba(37,99,235,0); }
+  100%{ box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+}
+
+/* Animate the main blocks on first render */
+.block-container > :is(div, section){
+  animation: fadeInUp .35s ease both;
+}
+.block-container > :is(div, section):nth-child(1){ animation-delay: .02s; }
+.block-container > :is(div, section):nth-child(2){ animation-delay: .05s; }
+.block-container > :is(div, section):nth-child(3){ animation-delay: .08s; }
+.block-container > :is(div, section):nth-child(4){ animation-delay: .11s; }
+.block-container > :is(div, section):nth-child(5){ animation-delay: .14s; }
+
+/* Make primary buttons gently pulse to draw attention (first button in a section) */
+.stButton:first-of-type > button{
+  animation: subtlePulse 2.2s ease-in-out 1.2s 2;
+}
+
+/* Badges / captions / subtle text */
+.small-muted, .caption, .stCaption{
+  color: var(--muted) !important;
+}
+
+/* Hide Streamlit default menu footer if you wish */
+/* #MainMenu, footer { display: none !important; } */
