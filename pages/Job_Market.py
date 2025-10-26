@@ -19,7 +19,7 @@ except Exception:
 # Page config
 # -----------------------
 st.set_page_config(page_title="Job Market", page_icon="💼", layout="wide")
-st.title("💼 Job Market")
+st.title("Job Market")
 st.caption("Each section has its own controls. Results persist after you click other buttons.")
 
 # -----------------------

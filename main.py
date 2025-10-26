@@ -74,7 +74,7 @@ def resolve_page(*candidates: str) -> str | None:
     return None
 
 # Try both “numbered” and “plain” filenames
-TRENDS_PAGE = resolve_page("pages/1_Trends_Studio.py", "pages/trends_studio.py", "pages/Trends_Studio.py")
+TRENDS_PAGE = resolve_page("pages/1_Trends_Studio.py", "pages/Trends_Studio.py", "pages/Trends_Studio.py")
 SKILLS_PAGE  = resolve_page("pages/2_Skills.py", "pages/Skills.py", "pages/skills.py")
 JOB_PAGE     = resolve_page("pages/3_Job_Market.py", "pages/Job_Market.py", "pages/job_market.py")
 

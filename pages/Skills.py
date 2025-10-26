@@ -18,7 +18,7 @@ except Exception:
     WORDCLOUD_AVAILABLE = False
 
 st.set_page_config(page_title="Skill Popularity", page_icon="📈", layout="wide")
-st.title("📊 Skill Popularity Tracker")
+st.title("Skill Popularity Tracker")
 
 # -------------------- Inputs --------------------
 skill = st.text_input("Enter a skill name:", value="Python")
@@ -314,7 +314,7 @@ def score_roles(skill_text: str) -> pd.DataFrame:
             })
     return pd.DataFrame(rows).sort_values("Match Score", ascending=False)
 
-if st.button("Find Matching Job Roles", key="btn_roles"):
+if st.button("🔎 Find Matching Job Roles", key="btn_roles"):
     st.session_state["roles_df"] = score_roles(skill)
 
 if not st.session_state["roles_df"].empty:

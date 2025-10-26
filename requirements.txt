@@ -3,3 +3,4 @@ streamlit
 pytrends
 pandas
 plotly
+wordcloud

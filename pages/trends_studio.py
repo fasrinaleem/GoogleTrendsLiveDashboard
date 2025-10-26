@@ -11,7 +11,7 @@ from pytrends.request import TrendReq
 # Page config
 # ----------------------
 st.set_page_config(page_title="Trends Studio", page_icon="📈", layout="wide")
-st.title("📈 Trends Studio")
+st.title("Trends Studio")
 st.caption("All controls live at the top. One button builds every section. Results persist.")
 
 # Make buttons Google-blue
