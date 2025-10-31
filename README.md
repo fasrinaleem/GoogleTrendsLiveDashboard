@@ -79,19 +79,7 @@ _Global job trends, market topics, and highest paying roles overview._
 
 ## 🧩 Project Architecture
 
-GOOGLETRENDSLIVEDASHBOARD/
-│
-├── .streamlit/                 # Streamlit configuration
-├── pages/                      # Multi-page app structure
-│   ├── Job_Market.py           # Job analytics and market trends
-│   ├── Skills.py               # Skills analysis and role insights
-│   └── Trends_Studio.py        # Macro view of trends and global insights
-│
-├── Main.py                     # Landing page and navigation
-├── style.css                   # Unified white design & animations
-├── requirements.txt             # Dependencies
-└── .gitignore / LICENSE         # Repo essentials
-
+<img width="296" height="265" alt="Image" src="https://github.com/user-attachments/assets/1abe1839-f594-4b5b-936b-119c1a0cfa1a" />
 
 ---
 
