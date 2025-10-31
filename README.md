@@ -155,7 +155,7 @@ Then open http://localhost:8501 in your browser.
 | Module | Preview |
 |--------|----------|
 | **Main** |<img width="1450" height="863" alt="Image" src="https://github.com/user-attachments/assets/5c23cc35-809a-4887-99d4-6cf9e0a658a3" />
-<img width="1450" height="863" alt="Image" src="https://github.com/user-attachments/assets/d472e0b1-3d3d-4448-8f05-73c67eba084e" />|
+| |<img width="1450" height="863" alt="Image" src="https://github.com/user-attachments/assets/d472e0b1-3d3d-4448-8f05-73c67eba084e" />|
 | **Skills** | <img width="1000" alt="Skills Page" src="https://github.com/user-attachments/assets/e5652a46-1589-4337-b3a7-661dd6239a7b" /> |
 | **Job Market** | <img width="1000" alt="Job Market Page" src="https://github.com/user-attachments/assets/11b2f681-1c24-41af-af4e-355a760f1629" /> |
 | **Trends Studio** | <img width="1000" alt="Trends Studio Page" src="https://github.com/user-attachments/assets/e643cf3a-928e-40ed-81ab-704a11238cfb" /> |
