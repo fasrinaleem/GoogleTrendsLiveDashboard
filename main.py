@@ -4,6 +4,14 @@
 
 import streamlit as st
 from PIL import Image
+# ---------------------------------------------------------------
+# Page Configuration (Title, Icon, Layout)
+# ---------------------------------------------------------------
+st.set_page_config(
+    page_title="Google Trends Live Dashboard | Job & Skill Insights",
+    page_icon="🌐",
+    layout="wide"
+)
 
 # ---------------------------------------------------------------
 # Apply Global CSS
@@ -23,6 +31,7 @@ hide_sidebar = """
     </style>
 """
 st.markdown(hide_sidebar, unsafe_allow_html=True)
+
 # ---------------------------------------------------------------
 # Header Section
 # ---------------------------------------------------------------
@@ -113,17 +122,18 @@ st.write("Choose a section to begin your exploration:")
 
 colA, colB, colC = st.columns(3)
 
+
 with colA:
-    if st.button("🎯 Trends Studio"):
-        st.switch_page("pages/Trends_Studio.py")
+    if st.button("🧠 Skills Analytics"):
+        st.switch_page("pages/1_Skills.py")
 
 with colB:
-    if st.button("🧠 Skills Analytics"):
-        st.switch_page("pages/Skills.py")
+    if st.button("💼 Job Market Insights"):
+        st.switch_page("pages/2_Job_Market.py")
 
 with colC:
-    if st.button("💼 Job Market Insights"):
-        st.switch_page("pages/Job_Market.py")
+    if st.button("🎯 Trends Studio"):
+        st.switch_page("pages/3_Trends_Studio.py")
 
 st.markdown("---")
 
