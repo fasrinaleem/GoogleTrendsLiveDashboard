@@ -4,7 +4,7 @@ A powerful multi-page **Streamlit** web application that visualizes **real-time 
 
 This project helps students, professionals, and researchers explore **job market trends**, **skill popularity**, **salary ranges**, **career growth paths**, and **global search interest** — all within a single, interactive, and visually appealing dashboard.
 
-### Quick Demo Video - [[https://drive.google.com/file/d/1vAZ38itJ9gAXhFsRupzEQGesGab6vECi/view?usp=sharing](https://drive.google.com/drive/search?dmr=1&ec=wgc-drive-globalnav-goto&q=demo)](https://drive.google.com/file/d/1gz9oHVwek2qYlhuVJI9LJuBQovZcGf7F/view?usp=sharing)
+### Quick Demo Video - https://drive.google.com/file/d/1gz9oHVwek2qYlhuVJI9LJuBQovZcGf7F/view?usp=sharing
 ---
 
 ## 🌟 Overview
